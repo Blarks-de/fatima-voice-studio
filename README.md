@@ -1,5 +1,9 @@
 # Fatima Voice Studio
 
+[![Latest release](https://img.shields.io/github/v/release/hassanxs/fatima-voice-studio?label=release&color=3f4ae0)](https://github.com/hassanxs/fatima-voice-studio/releases/latest) [![Build](https://img.shields.io/github/actions/workflow/status/hassanxs/fatima-voice-studio/release.yml?label=build)](https://github.com/hassanxs/fatima-voice-studio/actions/workflows/release.yml) [![Downloads](https://img.shields.io/github/downloads/hassanxs/fatima-voice-studio/total?color=d9f45c&labelColor=20221e)](https://github.com/hassanxs/fatima-voice-studio/releases) [![License: MIT](https://img.shields.io/github/license/hassanxs/fatima-voice-studio?color=20221e)](LICENSE) ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6) ![GPU](https://img.shields.io/badge/GPU-NVIDIA%20%7C%20AMD%20%7C%20Intel%20%7C%20CPU-555)
+
+![Fatima Voice Studio: voiceovers and voice cloning on your own Windows PC](docs/social-preview.png)
+
 Voiceovers and voice cloning on your own Windows PC: paste a script (or fifty), pick a voice from your library,
 and get each one back as WAV and MP3 at YouTube loudness, with SRT subtitles, in its own named, renamable folder.
 It runs [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) locally through the official
@@ -11,6 +15,18 @@ On a laptop RTX 5060 (8 GB) it speaks about **2.2× faster than real time**: a 1
 5 minutes, subtitles included. It also runs on AMD and Intel graphics cards (Vulkan) and, more slowly, on the CPU.
 
 The sibling of [Fatima Image Studio](https://github.com/hassanxs/Fatima-Image-Studio).
+
+![Fatima Voice Studio: a batch of three scripts on the Create page, with another batch speaking in the queue](docs/screenshots/create.webp)
+
+## Screenshots
+
+| Batches | One batch |
+|---|---|
+| ![Batches page: every batch is a folder on disk](docs/screenshots/batches.webp) | ![A batch: each script with its WAV, MP3 and SRT, and every part with New take and Edit](docs/screenshots/batch.webp) |
+| **Voices** | **Setup** |
+| ![Voices page: add a clip, or find a brand-new voice](docs/screenshots/voices.webp) | ![Setup page: hardware check, recommended engine and model, speed test](docs/screenshots/setup.webp) |
+| **Models** | **Hear it** |
+| ![Models page: every model with its licence](docs/screenshots/models.webp) | [English sample](docs/samples/english-nova.mp3) (18 s) · [Spanish sample](docs/samples/spanish-lucia.mp3) (17 s)<br><br>Both made in the app on a laptop RTX 5060, with *found* voices (voices the model invented, nobody's real voice), levelled to −16 LUFS. |
 
 ## Download and install
 

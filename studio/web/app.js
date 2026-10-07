@@ -516,7 +516,6 @@ S.selecting = false;
 S.selected = new Set();
 async function loadBatches() {
   try { S.batches = await api('/api/batches'); } catch (e) { toast(e.message); return; }
-  if (S.settings) $('batches-root').textContent = S.settings.batches_dir;
   renderBatches();
 }
 function renderBatches() {
@@ -610,7 +609,7 @@ function segRow(d, it) {
       <div class="sub">${chip(running ? 'running' : it.status)}${it.audio_s ? `<span>${it.audio_s.toFixed(1)} s</span>` : ''}${it.duration ? `<span>made in ${it.duration.toFixed(1)} s</span>` : ''}<span>seed ${it.seed}</span>${it.pause_after ? `<span>then ${it.pause_after} s pause</span>` : ''}</div>
       ${it.check ? `<div class="flag-note">${icon('alert')} ${esc(it.check)}</div>` : ''}
       ${it.error ? `<div class="err-note">${esc(it.error)}</div>` : ''}</div>
-    <div class="tools">${it.status === 'done' ? `<audio controls preload="none" src="${fileUrl(d.id, it.file, it.finished)}"></audio>` : ''}
+    <div class="tools">${it.status === 'done' ? `<audio controls preload="metadata" src="${fileUrl(d.id, it.file, it.finished)}"></audio>` : ''}
       <div class="row" style="gap:6px">
         <button class="btn xs" data-seg="regen" ${running ? 'disabled' : ''} title="Speak this part again with a new seed">${icon('dice')} New take</button>
         <button class="btn xs" data-seg="edit" ${running ? 'disabled' : ''}>${icon('pencil')} Edit</button>
@@ -654,7 +653,7 @@ function renderDetail() {
         ${out.lufs_before != null ? `<span>levelled to ${st.loudness ?? -16} LUFS</span>` : ''}
         ${out.match != null ? `<span title="Share of the script's words Whisper recognised in the audio">Whisper heard ${Math.round(out.match * 100)}%</span>` : ''}
         ${s.checks ? `<span style="color:var(--warn)">${plural(s.checks, 'part')} to check</span>` : ''}</div>
-      ${s.status === 'done' && main ? `<div class="player"><audio controls preload="none" src="${fileUrl(d.id, main, v)}"></audio>
+      ${s.status === 'done' && main ? `<div class="player"><audio controls preload="metadata" src="${fileUrl(d.id, main, v)}"></audio>
         <div class="files">${Object.entries(out.files).map(([k, f]) => `<a class="btn sm" href="${fileUrl(d.id, f, v, 1)}" download>${icon('download')} ${k.toUpperCase()}</a>`).join('')}</div></div>` : ''}
       ${out.status === 'failed' ? `<p class="err-note">Writing the files failed: ${esc(out.error)}</p>` : ''}
       <details class="segs" ${open ? 'open' : ''} data-n="${s.n}"><summary>Parts (${s.done}/${s.segments})</summary>
@@ -743,7 +742,7 @@ function renderVoiceCards() {
       <div class="top"><span class="name">${esc(v.name)}</span>${v.id === def ? '<span class="chip accent">Default</span>' : ''}${v.source === 'found' ? '<span class="chip">Found</span>' : ''}</div>
       <div class="meta"><span>${esc(langName(v.language))}</span><span>${v.seconds} s clip</span>${v.denoised ? '<span>noise reduced</span>' : ''}<span>${fmtWhen(v.created)}</span></div>
       ${v.notes ? `<div class="notes">${esc(v.notes)}</div>` : ''}
-      <audio controls preload="none" src="/api/voices/${encodeURIComponent(v.id)}/clip?v=${encodeURIComponent(v.seconds + '-' + v.denoised)}"></audio>
+      <audio controls preload="metadata" src="/api/voices/${encodeURIComponent(v.id)}/clip?v=${encodeURIComponent(v.seconds + '-' + v.denoised)}"></audio>
       ${v.advice?.length ? `<ul class="tips">${v.advice.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
       <div class="preview-slot"></div>
       <div class="acts">

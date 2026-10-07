@@ -20,7 +20,9 @@ IDEAL = (6.0, 15.0)  # what the quality report calls a good length
 
 
 def _slug(name: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    import unicodedata
+    plain = unicodedata.normalize("NFKD", name.lower()).encode("ascii", "ignore").decode()  # Lucía -> lucia
+    s = re.sub(r"[^a-z0-9]+", "-", plain).strip("-")
     return s[:40] or "voice"
 
 
@@ -122,7 +124,7 @@ class Voices:
         v = self.get(ref)
         if not v:
             raise KeyError(ref)
-        if "name" in fields:
+        if fields.get("name") is not None:
             name = (fields["name"] or "").strip()
             if not name:
                 raise ValueError("Give the voice a name.")
