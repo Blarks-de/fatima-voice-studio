@@ -1,0 +1,26 @@
+# Large binaries — downloaded, not authored (voice engine runtime + Hugging Face models)
+engine/
+models/
+
+# Your audio and outputs
+batches/
+exports/
+voices/
+
+# Private / per-machine state: config.json holds the API key; also logs and the voice library index
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Windows shortcut created by `python -m studio --install`
+*.lnk
+
+# Installer build output (packaging/build.ps1)
+build/
+dist/
+
+# Local tool settings
+.claude/
