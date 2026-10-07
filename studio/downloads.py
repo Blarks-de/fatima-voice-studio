@@ -165,6 +165,9 @@ class Downloads:
             inner = found.parent
             for item in inner.iterdir():
                 shutil.move(str(item), staging / item.name)
+            while inner != staging and not any(inner.iterdir()):  # the now-empty Release/ folder(s)
+                inner.rmdir()
+                inner = inner.parent
         if target.exists():
             shutil.rmtree(target)
         staging.replace(target)
