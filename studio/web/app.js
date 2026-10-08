@@ -1119,15 +1119,50 @@ async function loadSettings() {
         <div class="field"><label class="label">API key</label><input class="input mono" data-set="api_key" value="${esc(s.api_key)}"></div></div>
       <div class="field"><label class="label">Hugging Face token <span class="opt">— optional</span></label><input class="input mono" type="password" data-set="hf_token" placeholder="${s.hf_token_set ? 'Set (type to replace, clear to remove)' : 'Not needed for the models here'}"></div>
     </section>
-    <section class="card panel"><h2>Updates</h2>
-      <div class="kv"><span class="k">This version</span><span>${esc(s.version)}</span><span class="k">Latest</span><span>${esc(upd?.latest || '—')}</span></div>
-      ${upd?.status === 'available' ? `<p class="help">${esc(upd.notes || '')}</p><div class="row wrap"${s.installed ? '' : ' hidden'}>${upd.quick_ok ? '<button class="btn accent sm" data-update="quick">Quick update</button>' : ''}<button class="btn sm ${upd.quick_ok ? '' : 'accent'}" data-update="full">Full update</button></div>` : ''}
-      ${upd?.error ? `<p class="err-note">${esc(upd.error)}</p>` : upd?.status === 'up_to_date' ? '<p class="help">You have the latest version.</p>' : upd?.status === 'manual' && upd.url ? `<p class="help">Version ${esc(upd.latest)} is out: <a href="${esc(upd.url)}" target="_blank">download it from GitHub</a>.</p>` : ''}
+    ${updatesPanel(s, upd)}</div>`;
+  setHtml($('settings-body'), html);
+}
+// Settings → Updates: what's new in plain words, what each button does, and nothing from the download page.
+function updatesPanel(s, upd) {
+  const st = upd?.status;
+  const checked = upd?.checked ? `Checked ${new Date(upd.checked * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : 'Not checked yet';
+  let body = '';
+  if (st === 'available' || st === 'downloading' || st === 'applying') {
+    const several = (upd.whats_new || []).length > 1;  // skipped versions: label each one
+    const news = (upd.whats_new || []).map((v) => `<div class="upd-ver">${several ? `<span class="micro">Version ${esc(v.version)}</span>` : ''}<ul>${v.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('');
+    const opt = (kind, name, item, what) => item ? `<div class="upd-opt"><div class="row between"><b>${name}</b><span class="micro">${fmtSize(item.size)}</span></div><p class="help">${what}</p></div>` : '';
+    body = `<div class="upd-new"><div class="upd-head"><span class="upd-tag">New</span><b>Version ${esc(upd.latest)} is ready</b></div>
+        ${news ? `<div class="upd-news">${news}</div>` : ''}
+        ${upd.url ? `<a class="help-link" href="${esc(upd.url)}" target="_blank">Release page on GitHub</a>` : ''}</div>`;
+    if (!s.installed) { /* source copies: the note under the buttons says how */ }
+    else if (st === 'downloading') {
+      const p = upd.progress || {};
+      const pct = p.total ? Math.round(100 * p.done / p.total) : 0;
+      body += `<div class="upd-progress"><div style="width:${pct}%"></div></div><p class="help">Downloading… ${pct}%. The app restarts by itself when it's done.</p>`;
+    } else if (st === 'applying') body += '<p class="help">Installing… the app restarts by itself.</p>';
+    else {
+      body += `<div class="upd-opts">
+          ${upd.quick_ok ? opt('quick', 'Quick update', upd.app, 'Replaces the app\'s own files. Takes a few seconds.') : ''}
+          ${opt('full', 'Full update', upd.full, `Downloads the new installer and runs it. Takes about a minute.${upd.quick_ok ? '' : ' This version also updates the parts the app runs on, so it needs the full update.'}`)}
+        </div>
+        <p class="help">Your voices, models, settings and audio are kept. The app closes and starts again by itself.</p>
+        <div class="row wrap">${upd.quick_ok ? '<button class="btn accent sm" data-update="quick">Quick update</button>' : ''}<button class="btn sm ${upd.quick_ok ? '' : 'accent'}" data-update="full">Full update</button></div>`;
+    }
+  } else if (st === 'manual' && upd.url) {
+    body = `<p class="help">Version ${esc(upd.latest)} is out: <a href="${esc(upd.url)}" target="_blank">download it from GitHub</a>.</p>`;
+  } else if (st === 'up_to_date') {
+    body = '<p class="upd-ok">You have the latest version.</p>';
+  } else if (st === 'checking') {
+    body = '<p class="help">Checking…</p>';
+  }
+  return `<section class="card panel"><h2>Updates</h2>
+      <div class="kv"><span class="k">This version</span><span>${esc(s.version)}</span></div>
+      ${body}
+      ${upd?.error ? `<p class="err-note">${esc(upd.error)}</p>` : ''}
       <div class="row wrap"><button class="btn sm" data-update="check">${icon('refresh')} Check now</button>
         <label class="switch"><input type="checkbox" data-set="check_updates" ${s.check_updates ? 'checked' : ''}> Check automatically</label></div>
-      ${s.installed ? '' : '<p class="help">Running from source: updates come from git, not from here.</p>'}
-    </section></div>`;
-  setHtml($('settings-body'), html);
+      <p class="help">${checked}.${s.installed ? '' : ' Running from source: updates come from git, not from here.'}</p>
+    </section>`;
 }
 $('settings-body').addEventListener('change', run(async (e) => {
   const el = e.target;

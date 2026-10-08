@@ -265,6 +265,20 @@ audio { width: 100%; height: 40px; }
 .code .copy:hover { color: var(--lime); background: rgba(255,255,255,.08); }
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 14px; font-size: 13px; align-items: center; }
 .kv .k { font: 500 11px var(--mono); text-transform: uppercase; color: var(--muted); }
+/* Settings → Updates */
+.upd-new { border: 1px solid var(--line); border-radius: var(--r); background: var(--card); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.upd-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.upd-tag { font: 600 10px/1 var(--mono); text-transform: uppercase; background: var(--lime); color: var(--ink); border-radius: 3px; padding: 4px 6px; }
+.upd-news { display: flex; flex-direction: column; gap: 8px; }
+.upd-ver ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.5; }
+.upd-ver li + li { margin-top: 2px; }
+.help-link { font-size: 12px; align-self: flex-start; }
+.upd-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.upd-opt { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.upd-opt b { font-size: 13px; }
+.upd-ok { margin: 0; font-size: 13px; color: var(--ok); }
+.upd-progress { height: 6px; background: var(--well); border-radius: 3px; overflow: hidden; }
+.upd-progress div { height: 100%; background: var(--accent); transition: width .3s; }
 .tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
 .tabs button { padding: 8px 0; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 600; font-size: 13px; }
 .tabs button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }

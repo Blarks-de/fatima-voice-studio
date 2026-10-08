@@ -26,6 +26,7 @@ from . import REPO_URL, __version__, config
 log = logging.getLogger("studio.updater")
 
 API_LATEST = REPO_URL.replace("https://github.com/", "https://api.github.com/repos/") + "/releases/latest"
+CHANGELOG_URL = REPO_URL.replace("https://github.com/", "https://raw.githubusercontent.com/") + "/main/CHANGELOG.md"
 CHECK_EVERY = 6 * 3600
 LAUNCHER = "FatimaVoiceStudio.exe"
 RUNTIME_FILE = config.ROOT / "runtime.txt"  # written into installed copies by the build
@@ -36,6 +37,21 @@ request_exit = None  # set by __main__: closes the app cleanly (tray + server) s
 
 def parse_version(v: str) -> tuple:
     return tuple(int(p) for p in v.lstrip("vV").split("-")[0].split(".") if p.isdigit())
+
+
+def whats_new(changelog: str, current: str, latest: str) -> list[dict]:
+    """CHANGELOG.md -> [{"version", "items"}] for the versions after `current` up to `latest`, newest first."""
+    out, section = [], None
+    for line in changelog.splitlines():
+        if line.startswith("## "):
+            v = line[3:].strip().lstrip("vV")
+            ok = bool(parse_version(v)) and parse_version(current) < parse_version(v) <= parse_version(latest)
+            section = {"version": v, "items": []} if ok else None
+            if section:
+                out.append(section)
+        elif section is not None and line.lstrip().startswith(("- ", "* ")):
+            section["items"].append(line.strip()[2:].strip())
+    return [s for s in out if s["items"]]
 
 
 def installed_runtime() -> str | None:
@@ -49,7 +65,7 @@ class Updater:
     def __init__(self, cfg: dict):
         self.cfg = cfg
         self.state = {"status": "idle", "current": __version__, "installed": config.INSTALLED,
-                      "latest": None, "notes": "", "url": None, "checked": None, "error": None,
+                      "latest": None, "notes": "", "whats_new": [], "url": None, "checked": None, "error": None,
                       "full": None, "app": None, "quick_ok": False, "progress": None}
         self._release = None
         self._task: asyncio.Task | None = None
@@ -81,6 +97,13 @@ class Updater:
                     manifest = {"version": release.get("tag_name", "0").lstrip("vV")}
                 else:
                     manifest = (await client.get(assets["update.json"])).raise_for_status().json()
+                changes = []
+                if parse_version(manifest["version"]) > parse_version(__version__):
+                    try:  # a short "what's new" list; the release page itself is written for people downloading it
+                        text = (await client.get(self.cfg.get("update_changelog") or CHANGELOG_URL)).raise_for_status().text
+                        changes = whats_new(text, __version__, manifest["version"])
+                    except Exception as e:
+                        log.info("No changelog: %s", e)
         except Exception as e:
             log.warning("Update check failed: %s", e)
             self.state.update(status="error", error=f"Couldn't check for updates: {e}", checked=int(time.time()))
@@ -91,10 +114,12 @@ class Updater:
         self._release = {"manifest": manifest, "assets": assets}
         if newer and not (manifest.get("full") or manifest.get("app")):
             self.state.update(status="manual", latest=manifest["version"], url=release.get("html_url"),
-                              notes=release.get("body") or "", checked=int(time.time()), error=None, full=None, app=None)
+                              notes=release.get("body") or "", whats_new=changes, checked=int(time.time()), error=None,
+                              full=None, app=None)
             return self.state
         self.state.update(status="available" if newer else "up_to_date", latest=manifest["version"],
-                          notes=release.get("body") or manifest.get("notes") or "", url=release.get("html_url"),
+                          notes=release.get("body") or manifest.get("notes") or "", whats_new=changes,
+                          url=release.get("html_url"),
                           full=manifest.get("full"), app=manifest.get("app"), quick_ok=quick_ok,
                           checked=int(time.time()), error=None)
         if newer:

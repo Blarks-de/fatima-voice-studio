@@ -48,7 +48,15 @@ jobs:
         run: |
           $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
           $sha = (Get-Content "$($exe.FullName).sha256").Split(" ")[0]
-          $notes = @"
+          # This version's lines from CHANGELOG.md (the app shows the same list in Settings → Updates)
+          $v = "${{ github.ref_name }}".TrimStart("v")
+          $new = ""; $in = $false
+          foreach ($line in Get-Content CHANGELOG.md -Encoding utf8) {
+            if ($line -match '^## ') { $in = ($line.Substring(3).Trim().TrimStart("v") -eq $v); continue }
+            if ($in -and $line.Trim()) { $new += "$line`n" }
+          }
+          if ($new) { $new = "## What's new`n$new`n" }
+          $notes = $new + @"
           Download **$($exe.Name)** below and run it. The app downloads the engine and a model for your PC on its Setup page.
 
           SHA-256: ``$sha``
