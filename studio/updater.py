@@ -190,7 +190,7 @@ HELPER = r'''
 import ctypes, os, shutil, subprocess, sys, time, winreg, zipfile
 
 pid, app, archive, version, log_path = int(sys.argv[1]), sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
-APP_ID = "{0DF886EC-A4FE-4BD2-A7F4-94BA81A7ADE4}_is1"
+APP_ID = "{D5B6B025-A1AD-411E-AE1F-EE64746C2739}_is1"  # must match AppId in packaging/installer.iss (the build checks)
 
 
 def log(msg):

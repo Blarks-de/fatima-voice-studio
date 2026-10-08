@@ -24,6 +24,11 @@ Write-Host "Fatima Voice Studio $Version"
 if (Test-Path $Stage) { Remove-Item $Stage -Recurse -Force }
 New-Item -ItemType Directory -Force $Stage, $Dist, $Cache | Out-Null
 
+# 0. The quick updater sets the version shown in Windows' Installed apps, under the installer's AppId: they must match.
+$issId = (Select-String -Path "$Root\packaging\installer.iss" -Pattern '^AppId=\{\{([0-9A-F-]+)\}').Matches[0].Groups[1].Value
+$updId = (Select-String -Path "$Root\studio\updater.py" -Pattern '^APP_ID = "\{([0-9A-F-]+)\}_is1"').Matches[0].Groups[1].Value
+if (-not $issId -or $issId -ne $updId) { throw "AppId mismatch: installer.iss has '$issId', studio/updater.py has '$updId'" }
+
 # 1. The app's own files, exactly as in the repo.
 robocopy "$Root\studio" "$Stage\studio" /E /XD __pycache__ /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "copying studio failed" }
@@ -116,7 +121,7 @@ python -c @"
 import hashlib, json, os, sys, zipfile
 stage, app_zip, setup, version, runtime, out = sys.argv[1:7]
 with zipfile.ZipFile(app_zip, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-    for top in ('studio', 'studio_mcp.py', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md'):
+    for top in ('studio', 'studio_mcp.py', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'FatimaVoiceStudio.exe'):
         path = os.path.join(stage, top)
         if os.path.isfile(path):
             z.write(path, top)
