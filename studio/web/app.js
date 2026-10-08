@@ -216,6 +216,23 @@ async function pollState() {
   $('engine-text').textContent = text; $('engine-sub').textContent = sub; $('engine-dot').className = `state-dot ${dot}`;
   $('foot-right').textContent = `v${st.version} · ${st.api_base}`;
   if (st.update?.status === 'available') $('foot-left').innerHTML = `Fatima Voice Studio · <a href="#settings">update ${esc(st.update.latest)} available</a>`;
+  renderUpdateBadge();
+}
+
+// An update: a dot on Settings (and on General in its menu), and a one-time message.
+let updToasted = null;
+function renderUpdateBadge() {
+  const available = S.state?.update?.status === 'available';
+  for (const link of [document.querySelector('.nav a[data-view="settings"]'), document.querySelector('#settings-menu a[href="#settings"]')]) {
+    let dot = link.querySelector('.badge');
+    if (available && !dot) { dot = document.createElement('span'); dot.className = 'badge'; dot.title = 'Update available'; link.append(dot); }
+    if (!available && dot) dot.remove();
+  }
+  const latest = S.state?.update?.latest;
+  if (available && updToasted !== latest && !document.body.classList.contains('locked')) {
+    updToasted = latest;
+    toast(`Version ${latest} is available — Settings → General → Updates`, true);
+  }
 }
 
 // ---------- CREATE ----------
@@ -1104,7 +1121,7 @@ async function loadSettings() {
     </section>
     <section class="card panel"><h2>Updates</h2>
       <div class="kv"><span class="k">This version</span><span>${esc(s.version)}</span><span class="k">Latest</span><span>${esc(upd?.latest || '—')}</span></div>
-      ${upd?.status === 'available' ? `<p class="help">${esc(upd.notes || '')}</p><div class="row wrap">${upd.quick_ok ? '<button class="btn accent sm" data-update="quick">Quick update</button>' : ''}<button class="btn sm ${upd.quick_ok ? '' : 'accent'}" data-update="full">Full update</button></div>` : ''}
+      ${upd?.status === 'available' ? `<p class="help">${esc(upd.notes || '')}</p><div class="row wrap"${s.installed ? '' : ' hidden'}>${upd.quick_ok ? '<button class="btn accent sm" data-update="quick">Quick update</button>' : ''}<button class="btn sm ${upd.quick_ok ? '' : 'accent'}" data-update="full">Full update</button></div>` : ''}
       ${upd?.error ? `<p class="err-note">${esc(upd.error)}</p>` : upd?.status === 'up_to_date' ? '<p class="help">You have the latest version.</p>' : upd?.status === 'manual' && upd.url ? `<p class="help">Version ${esc(upd.latest)} is out: <a href="${esc(upd.url)}" target="_blank">download it from GitHub</a>.</p>` : ''}
       <div class="row wrap"><button class="btn sm" data-update="check">${icon('refresh')} Check now</button>
         <label class="switch"><input type="checkbox" data-set="check_updates" ${s.check_updates ? 'checked' : ''}> Check automatically</label></div>

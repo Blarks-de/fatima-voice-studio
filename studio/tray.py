@@ -10,7 +10,7 @@ import webbrowser
 import pystray
 from PIL import ImageDraw
 
-from . import APP_NAME, autostart
+from . import APP_NAME, autostart, config
 
 STATE_COLORS = {"busy": "#f5a524", "error": "#ff3b30"}
 
@@ -57,10 +57,22 @@ class Tray:
                 label = "speaking" if busy else "engine problem" if state == "error" else "ready"
                 self.icon.title = f"{APP_NAME} — {label}" + (f" · {queued} batch(es) queued" if queued else "")
                 self.icon.update_menu()
+                self._notify_update()
                 self._notify_finished()
             except Exception:
                 pass
             time.sleep(3)
+
+    def _notify_update(self) -> None:
+        """A Windows notification when a new version is out: once per version (remembered across restarts)."""
+        upd = self.state.get("update") or {}
+        latest = upd.get("latest")
+        if upd.get("status") != "available" or not latest or self.cfg.get("update_notified") == latest:
+            return
+        self.cfg["update_notified"] = latest
+        config.save(self.cfg)
+        self.icon.notify(f"Version {latest} is ready to install. Open {APP_NAME} → Settings → Updates "
+                         "(your voices, models and audio are kept).", "Update available")
 
     def _notify_finished(self) -> None:
         """A Windows notification when a batch stops working (finished, partly failed, or cancelled)."""
