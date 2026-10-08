@@ -1086,14 +1086,24 @@ async function loadSettings() {
   await loadVoicesList();
   const s = S.settings, st = S.state;
   const upd = await api('/api/update').catch(() => null);
-  const pathRow = (key, label, help) => `<div class="field"><label class="label">${label}</label><div class="path-row"><input class="input" data-set="${key}" value="${esc(s[key])}"><button class="btn sm" data-browse="${key}">Browse</button></div>${help ? `<p class="help">${help}</p>` : ''}</div>`;
-  const html = `<div class="settings-grid">
+  const pathRow = (key, label, help) => `<div class="field"><label class="label">${label}</label><div class="path-row"><input class="input" data-set="${key}" value="${esc(s[key])}" title="${esc(s[key])}"><button class="btn sm" data-browse="${key}">Browse</button><button class="btn sm" data-open-folder="${key.replace('_dir', '')}" title="Open in File Explorer" aria-label="Open in File Explorer">${icon('folder')}</button></div>${help ? `<p class="help">${help}</p>` : ''}</div>`;
+  const html = `<div class="settings-cols">
+    <div class="settings-stack">
     <section class="card panel"><h2>Defaults for new scripts</h2>
       <div class="field"><label class="label">Voice</label><div class="select-wrap"><select class="select" data-set="default_voice">${voiceOptions(s.default_voice, { blank: 'None' })}</select>${icon('chevron')}</div></div>
       <div class="pair"><div class="field"><label class="label">Language</label><div class="select-wrap"><select class="select" data-set="default_language">${languageOptions(s.default_language)}</select>${icon('chevron')}</div></div>
         <div class="field"><label class="label">Voice model</label><div class="select-wrap"><select class="select" data-set="default_model">${st.models.filter((m) => m.kind === 'voice').map((m) => `<option value="${m.key}"${m.key === s.default_model ? ' selected' : ''}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
     </section>
-    <section class="card panel"><h2>Output</h2>
+    <section class="card panel"><h2>Speech</h2>
+      <div class="pair"><div class="field"><label class="label">Speed</label><div class="select-wrap"><select class="select" data-set="speed">${[0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.15, 1.2].map((v) => `<option value="${v}"${Math.abs(v - (s.speed || 1)) < 0.001 ? ' selected' : ''}>${v}×${v === 1 ? ' natural' : ''}</option>`).join('')}</select>${icon('chevron')}</div></div>
+        <div class="field" style="justify-content:flex-end"><label class="switch" style="height:42px"><input type="checkbox" data-set="spell_numbers" ${s.spell_numbers ? 'checked' : ''}> Say numbers as words</label></div></div>
+      <div class="pair"><div class="field"><label class="label">Pause between paragraphs (s)</label><input class="input mono" type="number" step="0.1" min="0" max="10" data-set="pause_paragraph" value="${s.pause_paragraph}"></div>
+        <div class="field"><label class="label">Pause inside a paragraph (s)</label><input class="input mono" type="number" step="0.05" min="0" max="5" data-set="pause_segment" value="${s.pause_segment}"></div></div>
+      <div class="field"><label class="label">Longest part (characters)</label><input class="input mono" type="number" step="50" min="150" max="1200" data-set="max_chars" value="${s.max_chars}"><p class="help">Text is spoken in parts of up to this length (about ${Math.round(s.max_chars / 14)} s). Shorter parts are quicker to redo; longer ones flow more.</p></div>
+    </section>
+    </div>
+    <div class="settings-stack">
+    <section class="card panel"><h2>Files</h2>
       <div class="field"><span class="label">Files for each finished script</span><div class="checks">
         <label><input type="checkbox" data-fmt="wav" ${s.formats.includes('wav') ? 'checked' : ''}> WAV</label>
         <label><input type="checkbox" data-fmt="mp3" ${s.formats.includes('mp3') ? 'checked' : ''}> MP3</label>
@@ -1101,17 +1111,14 @@ async function loadSettings() {
       <div class="field"><label class="label">Whisper model (subtitles and transcripts)</label><div class="select-wrap"><select class="select" data-set="subtitles_model"><option value=""${s.subtitles_model ? '' : ' selected'}>Best one downloaded</option>${st.models.filter((m) => m.kind === 'subtitles').map((m) => `<option value="${m.key}"${m.key === s.subtitles_model ? ' selected' : ''}${m.installed ? '' : ' disabled'}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('')}</select>${icon('chevron')}</div></div>
       <div class="pair"><div class="field"><label class="label">Loudness (LUFS)</label><input class="input mono" type="number" step="0.5" min="-30" max="-9" data-set="loudness" value="${s.loudness}"><p class="help">−16 suits voiceovers; YouTube plays at about −14.</p></div>
         <div class="field"><label class="label">MP3 quality (kbps)</label><div class="select-wrap"><select class="select" data-set="mp3_bitrate">${[96, 128, 160].map((k) => `<option${k === s.mp3_bitrate ? ' selected' : ''}>${k}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
-      <div class="pair"><div class="field"><label class="label">Speed</label><div class="select-wrap"><select class="select" data-set="speed">${[0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.15, 1.2].map((v) => `<option value="${v}"${Math.abs(v - (s.speed || 1)) < 0.001 ? ' selected' : ''}>${v}×${v === 1 ? ' natural' : ''}</option>`).join('')}</select>${icon('chevron')}</div></div>
-        <div class="field" style="justify-content:flex-end"><label class="switch" style="height:42px"><input type="checkbox" data-set="spell_numbers" ${s.spell_numbers ? 'checked' : ''}> Say numbers as words</label></div></div>
-      <div class="pair"><div class="field"><label class="label">Pause between paragraphs (s)</label><input class="input mono" type="number" step="0.1" min="0" max="10" data-set="pause_paragraph" value="${s.pause_paragraph}"></div>
-        <div class="field"><label class="label">Pause inside a paragraph (s)</label><input class="input mono" type="number" step="0.05" min="0" max="5" data-set="pause_segment" value="${s.pause_segment}"></div></div>
-      <div class="field"><label class="label">Longest part (characters)</label><input class="input mono" type="number" step="50" min="150" max="1200" data-set="max_chars" value="${s.max_chars}"><p class="help">Text is spoken in parts of up to this length (about ${Math.round(s.max_chars / 14)} s). Shorter parts are quicker to redo; longer ones flow more.</p></div>
     </section>
     <section class="card panel"><h2>Folders</h2>
       ${pathRow('batches_dir', 'Batches', 'Every batch is a folder in here.')}
       ${pathRow('exports_dir', 'Exports', 'Where AI agents save exports.')}
       <div class="row wrap"><button class="btn sm" data-open-folder="voices">${icon('folder')} Voices</button><button class="btn sm" data-open-folder="models">${icon('folder')} Models</button><button class="btn sm" data-open-folder="logs">${icon('folder')} Logs</button></div>
     </section>
+    </div>
+    <div class="settings-stack">
     <section class="card panel"><h2>App</h2>
       <label class="switch"><input type="checkbox" data-set="start_with_windows" ${s.start_with_windows ? 'checked' : ''}> Start with Windows (in the tray)</label>
       <label class="switch"><input type="checkbox" data-set="notify" ${s.notify ? 'checked' : ''}> Windows notification when a batch finishes</label>
@@ -1119,7 +1126,8 @@ async function loadSettings() {
         <div class="field"><label class="label">API key</label><input class="input mono" data-set="api_key" value="${esc(s.api_key)}"></div></div>
       <div class="field"><label class="label">Hugging Face token <span class="opt">— optional</span></label><input class="input mono" type="password" data-set="hf_token" placeholder="${s.hf_token_set ? 'Set (type to replace, clear to remove)' : 'Not needed for the models here'}"></div>
     </section>
-    ${updatesPanel(s, upd)}</div>`;
+    ${updatesPanel(s, upd)}
+    </div></div>`;
   setHtml($('settings-body'), html);
 }
 // Settings → Updates: what's new in plain words, what each button does, and nothing from the download page.

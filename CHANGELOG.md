@@ -2,6 +2,9 @@
 
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
+## 0.2.4
+- Tidier Settings page: the cards sit in three even columns, Output is split into Speech and Files, and each folder has an Open button.
+
 ## 0.2.3
 - Clearer Updates panel in Settings: what's new, the download size, and what each button does.
 - Ready-made English and Spanish pronunciation lists to import (in the dictionaries folder on GitHub).
