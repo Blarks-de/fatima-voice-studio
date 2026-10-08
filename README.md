@@ -120,7 +120,7 @@ everything (settings, models, engine, voices, batches) stays inside the project 
 |---|---|---|
 | Qwen3-TTS 1.7B · Q8 (default) | Apache 2.0 — commercial use OK | 10 languages: English, Spanish, French, German, Italian, Portuguese, Russian, Japanese, Korean, Chinese |
 | Qwen3-TTS 1.7B · Q4 | Apache 2.0 — commercial use OK | For 4 GB GPUs and CPU-only PCs |
-| Whisper small / large-v3 turbo | MIT — commercial use OK | Subtitle timing and transcription, on the CPU |
+| Whisper base, small, medium, large-v3 turbo, large-v3 | MIT — commercial use OK | Subtitle timing and transcription, on the CPU. Small is recommended; pick the one in use on the Setup page or in Settings |
 
 Every model shows its licence in the app. Non-commercial models would carry a red label and are refused to AI
 agents unless allowed on the Connect page.

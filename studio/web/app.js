@@ -873,6 +873,9 @@ function modelCard(m) {
   const busy = m.job && ['downloading', 'checking', 'installing'].includes(m.job.status);
   let acts;
   if (busy) acts = dlBox(m.job, m.to_download, m.partial, 'm', m.key);
+  else if (m.installed && m.kind === 'subtitles') acts = (m.in_use ? `<span class="chip ok">${icon('check')} In use</span>`
+    : `<span class="chip">Downloaded</span><button class="btn sm accent" data-m="use" data-key="${m.key}">Use this one</button>`)
+    + `<button class="btn sm" data-m="remove" data-key="${m.key}">Remove</button>`;
   else if (m.installed) acts = `<span class="chip ok">${icon('check')} Downloaded</span><button class="btn sm" data-m="remove" data-key="${m.key}">Remove</button>`;
   else if (m.partial) acts = `<button class="btn sm accent" data-m="download" data-key="${m.key}">${icon('download')} Resume (${fmtSize(m.partial)} done)</button><button class="text-btn red" data-m="discard" data-key="${m.key}">Discard</button>`;
   else acts = `<button class="btn sm accent" data-m="download" data-key="${m.key}">${icon('download')} Download ${fmtSize(m.to_download)}</button>`;
@@ -889,6 +892,7 @@ document.addEventListener('click', run(async (e) => {
   if (act === 'download') await api(`/api/models/${key}/download`, { method: 'POST' });
   else if (act === 'cancel') await api(`/api/models/${key}/cancel`, { method: 'POST' });
   else if (act === 'discard') { if (!await confirmDialog('Discard the paused download?', 'The part already downloaded is deleted.', 'Discard')) return; await api(`/api/models/${key}/partial`, { method: 'DELETE' }); }
+  else if (act === 'use') { S.settings = await api('/api/settings', { method: 'PUT', json: { subtitles_model: key } }); toast('Subtitles and transcripts now use this model.', true); }
   else if (act === 'remove') { if (!await confirmDialog('Remove this model?', 'Its files are deleted from this PC. You can download it again any time.', 'Remove')) return; await api(`/api/models/${key}`, { method: 'DELETE' }); }
   setTimeout(() => (S.view === 'setup' ? loadSetup() : loadModels()), 300);
 }));
@@ -915,7 +919,7 @@ async function loadSetup(refresh = false) {
       <div class="about">${esc(e.about)}</div>${e.job?.status === 'failed' ? `<div class="err-note">${esc(e.job.error)}</div>` : ''}</div><div class="acts">${acts}</div></div>`;
   }).join('');
   const voiceModels = s.models.filter((m) => m.kind === 'voice').map(modelCard).join('');
-  const subModels = s.models.filter((m) => m.key === 'whisper-small').map(modelCard).join('');
+  const subModels = s.models.filter((m) => m.kind === 'subtitles').map(modelCard).join('');
   const b = s.benchmark;
   const html = `
     <div class="card hw">
@@ -929,7 +933,7 @@ async function loadSetup(refresh = false) {
     ${engines}
     ${stepHead(2, s.steps.model, 'Voice model', 'Speaks your scripts. Both versions are free for commercial use.')}
     ${voiceModels}
-    ${stepHead(3, s.steps.subtitles, 'Subtitles <span class="opt" style="font-weight:400;font-size:14px;color:var(--muted)">— recommended</span>', 'Times the SRT subtitles for your videos. Small, and runs on the CPU.')}
+    ${stepHead(3, s.steps.subtitles, 'Subtitles <span class="opt" style="font-weight:400;font-size:14px;color:var(--muted)">— recommended</span>', 'Times the SRT subtitles for your videos, on the CPU. Small is plenty for subtitles; the bigger ones are more accurate for transcribing other audio.')}
     ${subModels}
     ${stepHead(4, s.steps.voice, 'A voice', s.steps.voice ? 'You have voices in your library.' : 'Add a 6–15 second clip of a voice, or find a new one.')}
     ${s.ready ? `<a class="btn ${s.steps.voice ? '' : 'accent'}" href="#voices">${icon('users')} Open Voices</a>` : '<p class="help">Available once the engine and a voice model are downloaded.</p>'}
@@ -1028,6 +1032,7 @@ async function loadSettings() {
         <label><input type="checkbox" data-fmt="wav" ${s.formats.includes('wav') ? 'checked' : ''}> WAV</label>
         <label><input type="checkbox" data-fmt="mp3" ${s.formats.includes('mp3') ? 'checked' : ''}> MP3</label>
         <label><input type="checkbox" data-set="subtitles" ${s.subtitles ? 'checked' : ''}> Subtitles (SRT)</label></div></div>
+      <div class="field"><label class="label">Whisper model (subtitles and transcripts)</label><div class="select-wrap"><select class="select" data-set="subtitles_model"><option value=""${s.subtitles_model ? '' : ' selected'}>Best one downloaded</option>${st.models.filter((m) => m.kind === 'subtitles').map((m) => `<option value="${m.key}"${m.key === s.subtitles_model ? ' selected' : ''}${m.installed ? '' : ' disabled'}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('')}</select>${icon('chevron')}</div></div>
       <div class="pair"><div class="field"><label class="label">Loudness (LUFS)</label><input class="input mono" type="number" step="0.5" min="-30" max="-9" data-set="loudness" value="${s.loudness}"><p class="help">−16 suits voiceovers; YouTube plays at about −14.</p></div>
         <div class="field"><label class="label">MP3 quality (kbps)</label><div class="select-wrap"><select class="select" data-set="mp3_bitrate">${[96, 128, 160].map((k) => `<option${k === s.mp3_bitrate ? ' selected' : ''}>${k}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
       <div class="pair"><div class="field"><label class="label">Pause between paragraphs (s)</label><input class="input mono" type="number" step="0.1" min="0" max="10" data-set="pause_paragraph" value="${s.pause_paragraph}"></div>

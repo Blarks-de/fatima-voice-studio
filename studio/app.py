@@ -881,6 +881,8 @@ def create_app(cfg: dict) -> FastAPI:
             raise HTTPException(400, "Unknown voice model")
         if "default_language" in changes:
             check_language(changes["default_language"])
+        if changes.get("subtitles_model") and config.MODELS.get(changes["subtitles_model"], {}).get("kind") != "subtitles":
+            raise HTTPException(400, "Unknown subtitles model")
         if changes.get("default_voice"):
             changes["default_voice"] = check_voice(changes["default_voice"])
         if "api_key" in changes:

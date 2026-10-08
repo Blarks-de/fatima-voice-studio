@@ -54,6 +54,7 @@ DEFAULTS = {
     "formats": ["wav", "mp3"],
     "mp3_bitrate": 192,
     "subtitles": True,       # SRT next to each finished script (needs the subtitles model)
+    "subtitles_model": "",   # which Whisper times subtitles and transcribes ("" = best installed)
     "pause_segment": 0.25,   # seconds of silence where a long paragraph was split
     "pause_paragraph": 0.7,  # seconds between paragraphs
     "max_chars": 600,        # longest piece of text sent to the engine at once (about 40 seconds of speech)
@@ -114,10 +115,16 @@ FILES = {
                                              "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129"),
     "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf": (_QWEN + "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf", 446422912,
                                                   "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2"),
+    "ggml-base-q5_1.bin": (_WHISPER + "ggml-base-q5_1.bin", 59707625,
+                           "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898"),
     "ggml-small-q5_1.bin": (_WHISPER + "ggml-small-q5_1.bin", 190085487,
                             "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb"),
+    "ggml-medium-q5_0.bin": (_WHISPER + "ggml-medium-q5_0.bin", 539212467,
+                             "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f"),
     "ggml-large-v3-turbo-q5_0.bin": (_WHISPER + "ggml-large-v3-turbo-q5_0.bin", 574041195,
                                      "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"),
+    "ggml-large-v3-q5_0.bin": (_WHISPER + "ggml-large-v3-q5_0.bin", 1081140203,
+                               "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1"),
 }
 
 # Language codes the voice models take; the label is shown in the app.
@@ -140,16 +147,32 @@ MODELS = {
         "languages": list(LANGUAGES), "vram_gb": 3.2,
         "about": "Same model, compressed further: for graphics cards with 4 GB or less, or CPU-only PCs. "
                  "Slightly less polished."},
+    # Subtitle timing only needs Whisper to find the words (the text comes from the script), so small is plenty;
+    # the bigger ones are for transcribing audio you didn't write (the transcription API, the MCP transcribe tool).
+    "whisper-base": {
+        "kind": "subtitles", "label": "Whisper base", "short": "Subtitles · fastest", "api_id": "whisper-base",
+        "files": ["ggml-base-q5_1.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-base",
+        "about": "The smallest and quickest: about 24× faster than real time on an Intel Core Ultra 9, and as good as small "
+                 "for timing clear English narration. Less sure of other languages."},
     "whisper-small": {
         "kind": "subtitles", "label": "Whisper small", "short": "Subtitles · fast", "api_id": "whisper-small",
         "files": ["ggml-small-q5_1.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-small",
-        "about": "Times the subtitles (SRT) of every finished script. Runs on the CPU, about 10× faster than real time."},
+        "about": "Times the subtitles (SRT) of every finished script. Runs on the CPU, about 10× faster than real time "
+                 "on an Intel Core Ultra 9. Plenty for subtitles in all 10 languages."},
+    "whisper-medium": {
+        "kind": "subtitles", "label": "Whisper medium", "short": "Transcripts · more accurate", "api_id": "whisper-medium",
+        "files": ["ggml-medium-q5_0.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-medium",
+        "about": "More accurate, especially in Spanish and other non-English languages. Slower than small."},
     "whisper-turbo": {
-        "kind": "subtitles", "label": "Whisper large-v3 turbo", "short": "Transcripts · accurate", "api_id": "whisper-large-v3-turbo",
+        "kind": "subtitles", "label": "Whisper large-v3 turbo", "short": "Transcripts · accurate and quick", "api_id": "whisper-large-v3-turbo",
         "files": ["ggml-large-v3-turbo-q5_0.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-large-v3-turbo",
-        "about": "More accurate transcripts, for the transcription API and for timing subtitles in harder audio. "
-                 "About 3× slower than Whisper small."},
+        "about": "Close to large-v3 accuracy at a fraction of the work. A good choice for transcribing audio you didn't write."},
+    "whisper-large": {
+        "kind": "subtitles", "label": "Whisper large-v3", "short": "Transcripts · most accurate", "api_id": "whisper-large-v3",
+        "files": ["ggml-large-v3-q5_0.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-large-v3",
+        "about": "The most accurate Whisper, and the slowest on the CPU. For hard audio: accents, noise, music underneath."},
 }
+SUBTITLE_PREFERENCE = ["whisper-small", "whisper-turbo", "whisper-medium", "whisper-base", "whisper-large"]
 
 
 def model_files(key: str) -> list[str]:
@@ -166,7 +189,7 @@ def voice_models() -> list[str]:
 
 EDITABLE = {"batches_dir", "exports_dir", "default_model", "default_language", "default_voice", "port", "api_key",
             "notify", "agent_read_dirs", "agents_noncommercial", "check_updates", "loudness", "formats", "mp3_bitrate",
-            "subtitles", "pause_segment", "pause_paragraph", "max_chars", "hf_token", "timeout_s"}
+            "subtitles", "subtitles_model", "pause_segment", "pause_paragraph", "max_chars", "hf_token", "timeout_s"}
 
 
 def load() -> dict:
@@ -192,6 +215,8 @@ def installed_models(cfg: dict) -> list[str]:
 
 
 def subtitles_model(cfg: dict) -> str | None:
-    """The installed subtitles model to use (the fast one if both are there)."""
+    """The Whisper model to use: the one chosen in Settings if it's installed, else the best installed one."""
     installed = installed_models(cfg)
-    return next((k for k in ("whisper-small", "whisper-turbo") if k in installed), None)
+    if cfg.get("subtitles_model") in installed:
+        return cfg["subtitles_model"]
+    return next((k for k in SUBTITLE_PREFERENCE if k in installed), None)

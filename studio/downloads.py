@@ -46,6 +46,7 @@ class Downloads:
                 "key": key, "kind": m["kind"], "label": m["label"], "short": m["short"], "about": m["about"],
                 "license": m["license"], "noncommercial": bool(m.get("noncommercial")), "page": m["page"],
                 "installed": key in installed and not (m["kind"] == "subtitles" and self._whisper_missing()),
+                "in_use": m["kind"] == "subtitles" and key == config.subtitles_model(self.cfg),
                 "size": sum(config.FILES[f][1] for f in config.model_files(key)),
                 "to_download": sum(config.FILES[f][1] for f in self.missing(key)) + extra,
                 "partial": self.partial_bytes(key),

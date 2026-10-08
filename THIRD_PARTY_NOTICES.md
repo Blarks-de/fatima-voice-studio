@@ -59,7 +59,7 @@ and checks each file against its published SHA-256.
 | NVIDIA CUDA runtime (in the CUDA engine downloads) | NVIDIA CUDA EULA | redistributed by llama.cpp |
 | whisper.cpp (`whisper-cli`), incl. ggml | MIT | https://github.com/ggml-org/whisper.cpp |
 | Qwen3-TTS 12Hz 1.7B Base (GGUF, Q8 and Q4) | Apache 2.0 | https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base, GGUF by ggml-org |
-| Whisper small, Whisper large-v3 turbo (ggml) | MIT | https://huggingface.co/openai, ggml by ggerganov |
+| Whisper base, small, medium, large-v3 turbo, large-v3 (ggml) | MIT | https://huggingface.co/openai, ggml by ggerganov |
 
 ## Audio you make
 
