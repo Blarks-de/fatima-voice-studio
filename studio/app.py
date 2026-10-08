@@ -24,7 +24,7 @@ from . import media
 from .engine import Engine, EngineError
 from .presets import Presets
 from .transcribe import Transcripts
-from .speech_text import Dictionary, speakable
+from .speech_text import Dictionary, parse_import, speakable
 from .store import SCRIPT_OVERRIDES, Store, batch_status, items_of, script_status, settings_for
 from .updater import Updater
 from .voices import Voices
@@ -881,6 +881,40 @@ def create_app(cfg: dict) -> FastAPI:
         said: str | None = None
         language: str | None = None
         case: bool | None = None
+
+    @app.get("/api/dictionary/export")
+    def export_words(format: str = "csv", language: str | None = None):
+        if format not in ("csv", "json"):
+            raise HTTPException(400, "format must be csv or json")
+        if language and language not in config.LANGUAGES:
+            raise HTTPException(400, "Unsupported language")
+        import datetime as dt
+        name = f"pronunciation{'-' + language if language else ''}-{dt.date.today().isoformat()}.{format}"
+        return Response(dictionary.export(format, language or None),
+                        media_type="text/csv; charset=utf-8" if format == "csv" else "application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.post("/api/dictionary/import")
+    async def import_words(request: Request):
+        """CSV (comma, semicolon or tab; English or Spanish headers), JSON, or TXT lines `written = said`."""
+        form = await request.form()
+        upload = form.get("file")
+        if not hasattr(upload, "read"):
+            raise HTTPException(400, "Choose a CSV, JSON or TXT file.")
+        data = await upload.read()
+        if len(data) > 10 * 1024 * 1024:
+            raise HTTPException(400, "That file is over 10 MB; a pronunciation list is usually a few KB.")
+        default = str(form.get("language") or "")
+        if default and default not in config.LANGUAGES:
+            raise HTTPException(400, "Unsupported language")
+        try:
+            rows, problems = parse_import(data, getattr(upload, "filename", "") or "words.csv", default)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if not rows and not problems:
+            raise HTTPException(400, "No words found in that file.")
+        result = dictionary.import_entries(rows, update=form.get("update", "1") in ("1", "true", "on"))
+        return result | {"problems": problems[:50], "problem_count": len(problems)}
 
     @app.patch("/api/dictionary/{eid}")
     def edit_word(eid: str, body: WordEdit):

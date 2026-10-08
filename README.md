@@ -99,7 +99,8 @@ everything (settings, models, engine, voices, batches) stays inside the project 
   `EE.UU.` → *Estados Unidos*), per language, with *Hear it* to check. **Numbers as words**: years, money
   (`$5 millones` → *cinco millones de dólares*), percentages, times and ordinals are read correctly in English,
   Spanish, French, German, Italian and Portuguese. *See what the voice will read* shows the result before
-  speaking; your script and subtitles keep the original spelling.
+  speaking; your script and subtitles keep the original spelling. *Import* / *Export* the list as CSV (Excel,
+  Google Sheets; English or Spanish column names, comma or semicolon), JSON, or TXT lines `written = said as`.
 - **Output** — every finished script becomes `01_title.wav`, `01_title.mp3` and `01_title.srt` in the batch
   folder: joined, levelled to −16 LUFS (YouTube voiceover level; −14, −19, −23 also offered) with peaks under −1 dB.
   Subtitles use your script's exact words; Whisper only times them.

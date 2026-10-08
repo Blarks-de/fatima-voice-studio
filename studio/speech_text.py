@@ -7,7 +7,9 @@ Numbers are spelled out in English, Spanish, French, German, Italian and Portugu
 and Chinese are left as digits: the voice model reads them itself, and spelling them out correctly needs grammar
 (case, counters) that a rule can't guess.
 """
+import csv
 import datetime as dt
+import io
 import json
 import re
 import threading
@@ -251,6 +253,47 @@ class Dictionary:
             self.entries = [x for x in self.entries if x["id"] != eid]
             self._save()
 
+    # ---- import / export ----
+
+    def export(self, fmt: str = "csv", language: str | None = None) -> bytes:
+        """CSV (UTF-8 with BOM, so Excel shows accents) or JSON; one language or all."""
+        rows = [e for e in sorted(self.entries, key=lambda e: (e["language"], e["from"].lower()))
+                if language is None or e["language"] in (language, "")]
+        if fmt == "json":
+            return json.dumps([{"written": e["from"], "said": e["to"], "language": e["language"] or "all",
+                                "exact_capitals": e["case"]} for e in rows], indent=2, ensure_ascii=False).encode("utf-8")
+        out = io.StringIO()
+        w = csv.writer(out, lineterminator="\r\n")
+        w.writerow(["written", "said", "language", "exact_capitals"])
+        for e in rows:
+            w.writerow([e["from"], e["to"], e["language"] or "all", "yes" if e["case"] else "no"])
+        return ("﻿" + out.getvalue()).encode("utf-8")
+
+    def import_entries(self, rows: list[dict], *, update: bool = True) -> dict:
+        """rows: [{"written", "said", "language", "case"}] (already parsed by parse_import).
+        Words already there (same written form and language) are updated, or skipped when update=False."""
+        added = updated = skipped = 0
+        with self._lock:
+            index = {(e["from"].lower(), e["language"]): e for e in self.entries}
+            for r in rows:
+                key = (r["written"].lower(), r["language"])
+                old = index.get(key)
+                if old:
+                    case = old["case"] if r["case"] is None else r["case"]
+                    if update and (old["to"] != r["said"] or old["case"] != case or old["from"] != r["written"]):
+                        old.update({"from": r["written"], "to": r["said"], "case": case})
+                        updated += 1
+                    else:
+                        skipped += 1
+                    continue
+                e = {"id": uuid.uuid4().hex[:8], "from": r["written"], "to": r["said"], "language": r["language"],
+                     "case": bool(r["case"]), "created": dt.datetime.now().isoformat(timespec="seconds")}
+                self.entries.append(e)
+                index[key] = e
+                added += 1
+            self._save()
+        return {"added": added, "updated": updated, "skipped": skipped}
+
     def apply(self, text: str, lang: str) -> str:
         """Longest written forms first, so "EE.UU." wins over a shorter overlapping entry."""
         for e in sorted(self.entries, key=lambda x: -len(x["from"])):
@@ -259,6 +302,107 @@ class Dictionary:
             pattern = rf"(?<![\w]){re.escape(e['from'])}(?![\w])"
             text = re.sub(pattern, lambda _m, to=e["to"]: to, text, flags=0 if e["case"] else re.IGNORECASE)
         return text
+
+
+HEADERS = {  # column names accepted on import (English and Spanish), lower-case
+    "written": ("written", "word", "from", "text", "escrito", "palabra", "texto", "original"),
+    "said": ("said", "said as", "say", "say it as", "to", "pronunciation", "pronounce", "dicho", "pronunciación",
+             "pronunciacion", "se dice", "decir"),
+    "language": ("language", "lang", "idioma", "lengua"),
+    "case": ("exact_capitals", "exact capitals", "case", "capitals", "match case", "mayúsculas", "mayusculas"),
+}
+YES = {"yes", "y", "true", "1", "si", "sí", "x", "exact", "exactly"}
+
+
+def _language(value: str, default: str) -> str | None:
+    """'es' / 'Spanish' / 'español' / 'all' / '' -> a language code ("" = every language); None if unknown."""
+    v = (value or "").strip().lower()
+    if not v:
+        return default
+    if v in ("all", "any", "every language", "todos", "todas", "*"):
+        return ""
+    if v in config.LANGUAGES:
+        return v
+    names = {name.lower(): code for code, name in config.LANGUAGES.items()}
+    names.update({"español": "es", "espanol": "es", "inglés": "en", "ingles": "en", "francés": "fr", "frances": "fr",
+                  "alemán": "de", "aleman": "de", "italiano": "it", "portugués": "pt", "portugues": "pt"})
+    return names.get(v)
+
+
+def _decode(data: bytes) -> str:
+    for enc in ("utf-8-sig", "cp1252"):  # Excel on Windows often saves CSV in the old ANSI encoding
+        try:
+            return data.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return data.decode("latin-1")
+
+
+def parse_import(data: bytes, filename: str, default_language: str = "") -> tuple[list[dict], list[str]]:
+    """A CSV / JSON / TXT file -> (rows, problems). TXT: one `written = said` per line."""
+    text = _decode(data)
+    name = filename.lower()
+    rows, problems = [], []
+
+    def add(n, written, said, lang_value, case_value):
+        written, said = (written or "").strip(), (said or "").strip()
+        if not written and not said:
+            return
+        if not written or not said:
+            problems.append(f"Line {n}: needs both the written form and how to say it.")
+            return
+        lang = _language(str(lang_value or ""), default_language)
+        if lang is None:
+            problems.append(f"Line {n}: unknown language “{lang_value}”.")
+            return
+        # None = the file doesn't say: an existing word keeps its setting, a new one matches any capitals
+        rows.append({"written": written, "said": said, "language": lang,
+                     "case": str(case_value).strip().lower() in YES if case_value not in (None, "") else None})
+
+    if name.endswith(".json") or text.lstrip().startswith(("[", "{")):
+        try:
+            items = json.loads(text)
+        except ValueError as e:
+            raise ValueError(f"That JSON file can't be read: {e}") from e
+        if isinstance(items, dict):  # {"CJNG": "ce jota ene ge", ...}
+            items = [{"written": k, "said": v} for k, v in items.items()]
+        for n, it in enumerate(items, 1):
+            if not isinstance(it, dict):
+                problems.append(f"Item {n}: not an entry.")
+                continue
+            get = lambda field: next((it[k] for k in it if str(k).strip().lower() in HEADERS[field]), None)
+            add(n, get("written"), get("said"), get("language"), get("case"))
+        return rows, problems
+
+    if name.endswith(".txt") or ("," not in text and ";" not in text and "\t" not in text and "=" in text):
+        for n, line in enumerate(text.splitlines(), 1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                problems.append(f"Line {n}: write it as  written = said as")
+                continue
+            written, said = line.split("=", 1)
+            add(n, written, said, "", "")
+        return rows, problems
+
+    try:  # CSV: comma, semicolon (Excel in Spanish) or tab
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    table = list(csv.reader(io.StringIO(text), dialect))
+    if not table:
+        return rows, problems
+    head = [c.strip().lower() for c in table[0]]
+    col = {f: next((i for i, h in enumerate(head) if h in names), None) for f, names in HEADERS.items()}
+    if col["written"] is not None and col["said"] is not None:
+        body, start = table[1:], 2
+    else:  # no header: written, said, [language], [exact capitals]
+        col, body, start = {"written": 0, "said": 1, "language": 2, "case": 3}, table, 1
+    cell = lambda r, f: r[col[f]] if col.get(f) is not None and col[f] < len(r) else ""
+    for n, r in enumerate(body, start):
+        add(n, cell(r, "written"), cell(r, "said"), cell(r, "language"), cell(r, "case"))
+    return rows, problems
 
 
 def speakable(text: str, lang: str, dictionary: Dictionary | None, numbers: bool = True) -> str:

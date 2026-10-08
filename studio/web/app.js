@@ -94,7 +94,7 @@ function fmtWhen(iso) {
   if (d.toDateString() === now.toDateString()) return `today ${time}`;
   return `${d.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${time}`;
 }
-const fmtSize = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
+const fmtSize = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${Math.round(b / 1e6)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 const langName = (code) => S.state?.languages?.[code] || code || '—';
 const voiceName = (id) => S.voices.find((v) => v.id === id)?.name || (id ? id : 'no voice');
 const fileUrl = (b, rel, v, dl) => `/api/batches/${b}/files/${rel.split('/').map(encodeURIComponent).join('/')}?v=${encodeURIComponent(v || '')}${dl ? '&download=1' : ''}`;
@@ -1239,6 +1239,7 @@ async function loadWords() {
 function renderWords() {
   const q = $('w-search').value.trim().toLowerCase();
   const rows = S.words.filter((w) => !q || w.from.toLowerCase().includes(q) || w.to.toLowerCase().includes(q));
+  $('w-count').textContent = `(${S.words.length})`;
   $('w-table').innerHTML = `<tr><th>Written</th><th>Said as</th><th>Language</th><th>Capitals</th><th></th></tr>` + (rows.length ? rows.map((w) => `
     <tr data-id="${w.id}"><td class="mono">${esc(w.from)}</td><td>${esc(w.to)}</td><td>${w.language ? esc(langName(w.language)) : 'Every language'}</td>
       <td>${w.case ? 'exactly' : 'any'}</td>
@@ -1247,6 +1248,56 @@ function renderWords() {
     : '<tr><td colspan="5" class="help" style="padding:16px 10px">No words yet.</td></tr>');
 }
 $('w-search').addEventListener('input', renderWords);
+
+// Import / export the dictionary (CSV for Excel or Google Sheets, JSON, or TXT lines "written = said")
+$('w-export').addEventListener('click', run(async () => {
+  const r = await editDialog({
+    title: 'Export pronunciations', ok: 'Download',
+    help: 'CSV opens in Excel or Google Sheets (accents included); JSON is for other tools or a backup. Import it again on any PC.',
+    extra: `<div class="pair"><div class="field"><label class="label">Format</label><div class="select-wrap"><select class="select" name="format">
+        <option value="csv">CSV (Excel, Google Sheets)</option><option value="json">JSON</option></select>${icon('chevron')}</div></div>
+      <div class="field"><label class="label">Words</label><div class="select-wrap"><select class="select" name="language">
+        <option value="">All languages</option>${languageOptions('')}</select>${icon('chevron')}</div></div></div>
+      <p class="help">${plural(S.words.length, 'word')} in the dictionary. “All languages” words are included in every language's export.</p>`,
+  });
+  if (!r) return;
+  const a = document.createElement('a');
+  a.href = `/api/dictionary/export?format=${r.format}${r.language ? `&language=${r.language}` : ''}`;
+  a.download = '';
+  document.body.append(a); a.click(); a.remove();
+}));
+$('w-import').addEventListener('click', run(async () => {
+  let file = null;
+  const r = await editDialog({
+    title: 'Import pronunciations', ok: 'Import',
+    help: 'A CSV (written, said, language, exact_capitals — English or Spanish headers, comma or semicolon), a JSON file, or a TXT list with one “written = said as” per line.',
+    extra: `<label class="drop" id="wi-drop"><input type="file" id="wi-file" accept=".csv,.json,.txt,text/csv,application/json,text/plain" hidden>
+        ${icon('upload')}<span id="wi-text">Choose or drop the file</span></label>
+      <div class="field"><label class="label">Language for rows that don't say</label><div class="select-wrap"><select class="select" name="language">
+        <option value="">Every language</option>${languageOptions('')}</select>${icon('chevron')}</div></div>
+      <label class="check"><input type="checkbox" name="update" checked> Update words that are already in the dictionary</label>`,
+    onOpen: (dlg) => {
+      const inp = dlg.querySelector('#wi-file'), drop = dlg.querySelector('#wi-drop');
+      const pick = (f) => { file = f; dlg.querySelector('#wi-text').innerHTML = f ? `<b>${esc(f.name)}</b> · ${fmtSize(f.size)}` : 'Choose or drop the file'; };
+      inp.addEventListener('change', () => pick(inp.files[0] || null));
+      ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+      ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
+      drop.addEventListener('drop', (e) => { e.preventDefault(); pick(e.dataTransfer.files[0] || null); });
+    },
+  });
+  if (!r) return;
+  if (!file) throw new Error('Choose a file to import.');
+  const form = new FormData();
+  form.append('file', file); form.append('language', r.language); form.append('update', r.update ? '1' : '0');
+  const res = await api('/api/dictionary/import', { method: 'POST', form });
+  await loadWords(); updateWordTest();
+  const summary = `Imported: ${res.added} added, ${res.updated} updated, ${res.skipped} already there`
+    + (res.problem_count ? `, ${plural(res.problem_count, 'line')} skipped.` : '.');
+  if (res.problem_count) {
+    await editDialog({ title: 'Import finished, with some problems', text: [summary, '', ...res.problems].join('\n'), rows: 10, ok: 'OK',
+      help: 'The good rows were imported. Fix these lines in the file and import it again (words already imported are just skipped).' });
+  } else toast(summary, true);
+}));
 $('w-add').addEventListener('click', run(async () => {
   await api('/api/dictionary', { method: 'POST', json: { written: $('w-from').value, said: $('w-to').value, language: $('w-lang').value, case: $('w-case').checked } });
   toast(`Added “${$('w-from').value.trim()}”.`, true);

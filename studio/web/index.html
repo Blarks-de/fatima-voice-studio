@@ -316,8 +316,12 @@
       <div class="summary" id="w-test-out">What the voice reads appears here.</div>
     </section>
   </div>
-  <div class="row between" style="margin:26px 0 12px"><div class="group-title" style="margin:0">Your words</div>
-    <div class="search"><span data-icon="search"></span><input class="input" id="w-search" placeholder="Search"></div></div>
+  <div class="row between wrap" style="margin:26px 0 12px"><div class="group-title" style="margin:0">Your words <span id="w-count"></span></div>
+    <div class="row wrap">
+      <div class="search"><span data-icon="search"></span><input class="input" id="w-search" placeholder="Search"></div>
+      <button type="button" class="btn" id="w-import"><span data-icon="upload"></span>Import</button>
+      <button type="button" class="btn" id="w-export"><span data-icon="download"></span>Export</button>
+    </div></div>
   <div class="card" style="padding:4px 18px"><table class="plain" id="w-table"></table></div>
 </main>
 
