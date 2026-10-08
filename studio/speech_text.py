@@ -300,8 +300,17 @@ class Dictionary:
             if e["language"] and e["language"] != lang:
                 continue
             pattern = rf"(?<![\w]){re.escape(e['from'])}(?![\w])"
-            text = re.sub(pattern, lambda _m, to=e["to"]: to, text, flags=0 if e["case"] else re.IGNORECASE)
+            text = re.sub(pattern, lambda m, to=e["to"], src=e["from"]: to + _kept_stop(m, src, to), text,
+                          flags=0 if e["case"] else re.IGNORECASE)
         return text
+
+
+def _kept_stop(m: re.Match, src: str, to: str) -> str:
+    """'…at 9 p.m.' ends the sentence too: keep its full stop when the abbreviation is at the end of the text,
+    a line, or before a Spanish ¿ / ¡. (Before a capital it can't tell: "Dr. Smith" isn't a sentence end.)"""
+    if not src.endswith(".") or to.endswith((".", "!", "?")):
+        return ""
+    return "." if re.match(r"[\"”’»)]*(?:[ \t]*(?:\n|$)|\s+[¿¡])", m.string[m.end():]) else ""
 
 
 HEADERS = {  # column names accepted on import (English and Spanish), lower-case

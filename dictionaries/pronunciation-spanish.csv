@@ -1,0 +1,105 @@
+﻿written,said,language,exact_capitals
+Srta.,señorita,es,yes
+Dra.,doctora,es,yes
+Ud.,usted,es,yes
+Uds.,ustedes,es,yes
+Vd.,usted,es,yes
+Lic.,licenciado,es,yes
+Licda.,licenciada,es,yes
+Ing.,ingeniero,es,yes
+Arq.,arquitecto,es,yes
+Prof.,profesor,es,yes
+Profa.,profesora,es,yes
+Gral.,general,es,yes
+Cnel.,coronel,es,yes
+Tte.,teniente,es,yes
+Pdte.,presidente,es,yes
+Mons.,monseñor,es,yes
+Sto.,santo,es,yes
+Sta.,santa,es,yes
+Dña.,doña,es,yes
+Av.,avenida,es,yes
+Avda.,avenida,es,yes
+C/,calle,es,yes
+núm.,número,es,no
+nº,número,es,no
+n.º,número,es,no
+pág.,página,es,no
+págs.,páginas,es,no
+aprox.,aproximadamente,es,no
+etc.,etcétera,es,no
+p. ej.,por ejemplo,es,no
+vs.,contra,es,no
+a.C.,antes de Cristo,es,yes
+a. C.,antes de Cristo,es,yes
+d.C.,después de Cristo,es,yes
+d. C.,después de Cristo,es,yes
+EE. UU.,Estados Unidos,es,yes
+km/h,kilómetros por hora,es,yes
+cm,centímetros,es,yes
+mm,milímetros,es,yes
+m²,metros cuadrados,es,yes
+mg,miligramos,es,yes
+ml,mililitros,es,yes
+FBI,efe be i,es,yes
+ADN,a de ene,es,yes
+CDMX,ce de eme equis,es,yes
+DF,de efe,es,yes
+CJNG,ce jota ene ge,es,yes
+FMI,efe eme i,es,yes
+EUA,e u a,es,yes
+UE,u e,es,yes
+ONG,o ene ge,es,yes
+OMS,o eme ese,es,yes
+OEA,o e a,es,yes
+ELN,e ele ene,es,yes
+EZLN,e zeta ele ene,es,yes
+PGR,pe ge erre,es,yes
+FGR,efe ge erre,es,yes
+CFE,ce efe e,es,yes
+TLC,te ele ce,es,yes
+BBVA,be be uve a,es,yes
+NBA,ene be a,es,yes
+IA,i a,es,yes
+I Guerra Mundial,Primera Guerra Mundial,es,yes
+II Guerra Mundial,Segunda Guerra Mundial,es,yes
+siglo I,siglo uno,es,yes
+siglo II,siglo dos,es,yes
+siglo III,siglo tres,es,yes
+siglo IV,siglo cuatro,es,yes
+siglo V,siglo cinco,es,yes
+siglo VI,siglo seis,es,yes
+siglo VII,siglo siete,es,yes
+siglo VIII,siglo ocho,es,yes
+siglo IX,siglo nueve,es,yes
+siglo X,siglo diez,es,yes
+siglo XI,siglo once,es,yes
+siglo XII,siglo doce,es,yes
+siglo XIII,siglo trece,es,yes
+siglo XIV,siglo catorce,es,yes
+siglo XV,siglo quince,es,yes
+siglo XVI,siglo dieciséis,es,yes
+siglo XVII,siglo diecisiete,es,yes
+siglo XVIII,siglo dieciocho,es,yes
+siglo XIX,siglo diecinueve,es,yes
+siglo XX,siglo veinte,es,yes
+siglo XXI,siglo veintiuno,es,yes
+s. XV,siglo quince,es,yes
+s. XVI,siglo dieciséis,es,yes
+s. XVII,siglo diecisiete,es,yes
+s. XVIII,siglo dieciocho,es,yes
+s. XIX,siglo diecinueve,es,yes
+s. XX,siglo veinte,es,yes
+s. XXI,siglo veintiuno,es,yes
+Carlos III,Carlos tercero,es,yes
+Carlos V,Carlos quinto,es,yes
+Felipe II,Felipe segundo,es,yes
+Felipe VI,Felipe sexto,es,yes
+Isabel II,Isabel segunda,es,yes
+Alfonso XIII,Alfonso trece,es,yes
+Luis XIV,Luis catorce,es,yes
+Luis XVI,Luis dieciséis,es,yes
+Juan Pablo II,Juan Pablo segundo,es,yes
+Benedicto XVI,Benedicto dieciséis,es,yes
+Juan Carlos I,Juan Carlos primero,es,yes
+Napoleón III,Napoleón tercero,es,yes
