@@ -12,6 +12,8 @@ the following third-party software and models, each under its own licence.
 | python-soundfile | BSD-3-Clause | https://github.com/bastibe/python-soundfile |
 | libsndfile (bundled in python-soundfile) | LGPL-2.1 | https://github.com/libsndfile/libsndfile |
 | lameenc, with the LAME MP3 encoder | LGPL-3.0 (LAME: LGPL-2.0) | https://github.com/chrisstaite/lameenc |
+| num2words | LGPL-2.1 | https://github.com/savoirfairelinux/num2words |
+| sherpa-onnx, sherpa-onnx-core (with ONNX Runtime) | Apache-2.0 (ONNX Runtime: MIT) | https://github.com/k2-fsa/sherpa-onnx |
 | FastAPI | MIT | https://github.com/fastapi/fastapi |
 | Starlette | BSD-3-Clause | https://github.com/encode/starlette |
 | Uvicorn | BSD-3-Clause | https://github.com/encode/uvicorn |
@@ -45,7 +47,7 @@ the following third-party software and models, each under its own licence.
 Exact versions are in `packaging/requirements-lock.txt`; each package's licence text is in its
 `*.dist-info` folder inside the installed `python\Lib\site-packages`.
 
-pystray, lameenc (with LAME) and libsndfile are LGPL. They are shipped unmodified as separate files (Python
+pystray, num2words, lameenc (with LAME) and libsndfile are LGPL. They are shipped unmodified as separate files (Python
 source and DLLs/extension modules), which you may replace with your own builds.
 
 ## Downloaded by the app when you choose to
@@ -60,6 +62,8 @@ and checks each file against its published SHA-256.
 | whisper.cpp (`whisper-cli`), incl. ggml | MIT | https://github.com/ggml-org/whisper.cpp |
 | Qwen3-TTS 12Hz 1.7B Base (GGUF, Q8 and Q4) | Apache 2.0 | https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base, GGUF by ggml-org |
 | Whisper base, small, medium, large-v3 turbo, large-v3 (ggml) | MIT | https://huggingface.co/openai, ggml by ggerganov |
+| UVR MDX-Net Voc_FT voice separator (ONNX) | MIT (Ultimate Vocal Remover) | https://github.com/Anjok07/ultimatevocalremovergui, ONNX by k2-fsa/sherpa-onnx |
+| ffmpeg 9.0.2 "essentials" build (only if ffmpeg isn't already on the PC) | GPL-3.0, a separate program the app runs | https://github.com/GyanD/codexffmpeg (builds of https://ffmpeg.org) |
 
 ## Audio you make
 

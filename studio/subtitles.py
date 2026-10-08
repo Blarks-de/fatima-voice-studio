@@ -50,8 +50,17 @@ def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = 
     threads = max(2, min(16, (os.cpu_count() or 4) - 2))
     args = [str(exe), "-m", str(Path(cfg["models_dir"]).resolve() / config.MODELS[model]["files"][0]),
             "-f", str(Path(wav).resolve()), "-l", language or "auto", "-t", str(threads), "-ojf", "-of", str(stem), "-np"]
-    p = subprocess.run(args, cwd=exe.parent, capture_output=True, timeout=3600,
-                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:  # the limit grows with the audio (large models on the CPU run near real time); a stuck run can't block the queue
+        import soundfile as sf
+        seconds = sf.info(str(wav)).duration
+    except Exception:
+        seconds = 600
+    try:
+        p = subprocess.run(args, cwd=exe.parent, capture_output=True, timeout=120 + seconds * 2,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired:
+        stem.with_suffix(".json").unlink(missing_ok=True)
+        raise WhisperError("Whisper took far longer than this audio needs and was stopped.")
     out = stem.with_suffix(".json")
     if p.returncode or not out.exists():
         err = (p.stderr or p.stdout or b"").decode("utf-8", "replace").strip().splitlines()

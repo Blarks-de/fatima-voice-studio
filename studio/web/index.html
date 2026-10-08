@@ -16,6 +16,7 @@
     <a href="#create" data-view="create"><span data-icon="mic"></span>Create</a>
     <a href="#batches" data-view="batches"><span data-icon="layers"></span>Batches</a>
     <a href="#voices" data-view="voices"><span data-icon="users"></span>Voices</a>
+    <a href="#transcribe" data-view="transcribe"><span data-icon="text"></span>Transcribe</a>
     <a href="#models" data-view="models"><span data-icon="box"></span>Models</a>
     <a href="#setup" data-view="setup"><span data-icon="cpu"></span>Setup</a>
     <a href="#connect" data-view="connect"><span data-icon="plug"></span>Connect</a>
@@ -23,6 +24,7 @@
   </nav>
   <div class="nav-menu" id="settings-menu" role="menu" aria-label="Settings sections" hidden>
     <a href="#settings" role="menuitem">General<span>Defaults, output, folders, updates</span></a>
+    <a href="#words" role="menuitem">Pronunciation<span>Names, abbreviations and numbers</span></a>
     <a href="#setup" role="menuitem">Setup<span>Hardware, engine, models, speed test</span></a>
   </div>
   <div class="engine">
@@ -48,6 +50,16 @@
       <div class="seg" id="create-mode" role="group" aria-label="What to make">
         <button type="button" data-cmode="single" aria-pressed="true">Quick</button>
         <button type="button" data-cmode="batch" aria-pressed="false">Batch</button>
+      </div>
+
+      <div class="field">
+        <label class="label" for="preset">Channel preset</label>
+        <div class="row" style="gap:8px">
+          <div class="select-wrap" style="flex:1;min-width:0"><select class="select" id="preset"><option value="">No preset</option></select><span data-icon="chevron"></span></div>
+          <button type="button" class="btn" id="preset-save" style="height:42px">Save</button>
+          <button type="button" class="icon-btn" id="preset-delete" aria-label="Delete this preset" hidden style="width:42px;height:42px"><span data-icon="trash"></span></button>
+        </div>
+        <p class="help">Voice, language, speed, loudness, pauses and files, saved under your channel's name.</p>
       </div>
 
       <div class="field single-only">
@@ -108,6 +120,21 @@
               <label><input type="checkbox" id="opt-srt" checked> Subtitles (SRT)</label>
             </div>
           </div>
+          <div class="pair">
+            <div class="field">
+              <label class="label" for="speed">Speed</label>
+              <div class="select-wrap"><select class="select" id="speed">
+                <option value="0.85">0.85× slower</option><option value="0.9">0.9×</option><option value="0.95">0.95×</option>
+                <option value="1" selected>1× natural</option><option value="1.05">1.05×</option><option value="1.1">1.1×</option>
+                <option value="1.15">1.15×</option><option value="1.2">1.2× faster</option>
+              </select><span data-icon="chevron"></span></div>
+            </div>
+            <div class="field" style="justify-content:flex-end">
+              <label class="check" style="height:42px"><input type="checkbox" id="opt-numbers" checked> Say numbers as words</label>
+            </div>
+          </div>
+          <p class="help">Speed changes the pace, not the pitch. Numbers like 1913, $5M, 35% and 5:30 become words (English, Spanish, French, German, Italian, Portuguese).
+            <button type="button" class="text-btn accent" id="read-preview">See what the voice will read</button> · <a class="text-btn accent" href="#words">Pronunciation</a></p>
           <div class="field">
             <label class="label" for="loudness">Loudness</label>
             <div class="select-wrap"><select class="select" id="loudness">
@@ -201,9 +228,9 @@
     <section class="card add-voice" id="add-voice">
       <h2 class="section-title">Add a voice</h2>
       <label class="drop" id="voice-drop">
-        <input type="file" id="voice-file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" hidden>
+        <input type="file" id="voice-file" accept="audio/*,video/*,.wav,.mp3,.flac,.ogg,.m4a,.mp4,.mkv,.mov,.webm" hidden>
         <span data-icon="upload"></span>
-        <span id="voice-drop-text">Drop an audio file here, or click to choose<br><small>WAV, MP3, FLAC or OGG · 6–15 seconds of one person speaking clearly</small></span>
+        <span id="voice-drop-text">Drop an audio or video file here, or click to choose<br><small>6–15 seconds of one person speaking clearly — or a longer recording: the best part is picked for you</small></span>
       </label>
       <audio id="voice-file-preview" controls hidden></audio>
       <div class="pair">
@@ -212,6 +239,8 @@
           <div class="select-wrap"><select class="select" id="voice-lang"></select><span data-icon="chevron"></span></div></div>
       </div>
       <div class="field"><label class="label" for="voice-notes">Notes <span class="opt">— optional</span></label><input class="input" id="voice-notes" placeholder="Where it's from, what it's good for"></div>
+      <label class="check"><input type="checkbox" id="voice-separate"> Take the voice out of music or background sound</label>
+      <p class="help" id="voice-separate-help"></p>
       <label class="check"><input type="checkbox" id="voice-denoise"> Reduce background noise</label>
       <label class="check consent"><input type="checkbox" id="voice-consent"> This is my own voice, or I have the speaker's permission to use it.</label>
       <button type="button" class="btn accent block" id="voice-add" disabled>Add voice</button>
@@ -255,6 +284,69 @@
     <button type="button" class="btn" id="setup-refresh"><span data-icon="refresh"></span>Check again</button>
   </div>
   <div id="setup-body"></div>
+</main>
+
+<!-- ============ PRONUNCIATION ============ -->
+<main class="page" id="view-words" hidden>
+  <div class="page-head">
+    <div>
+      <div class="title-row"><h1>Pronunciation</h1><span class="kicker">SAID THE WAY YOU WANT</span></div>
+      <p class="lede">Names, abbreviations and words the voice should say a particular way. Used for every script in that language; your script and subtitles keep the original spelling.</p>
+    </div>
+  </div>
+  <div class="settings-grid">
+    <section class="card panel">
+      <h2>Add a word</h2>
+      <div class="pair">
+        <div class="field"><label class="label" for="w-from">Written</label><input class="input" id="w-from" placeholder="CJNG"></div>
+        <div class="field"><label class="label" for="w-to">Say it as</label><input class="input" id="w-to" placeholder="ce jota ene ge"></div>
+      </div>
+      <div class="pair">
+        <div class="field"><label class="label" for="w-lang">Language</label><div class="select-wrap"><select class="select" id="w-lang"></select><span data-icon="chevron"></span></div></div>
+        <div class="field" style="justify-content:flex-end"><label class="check" style="height:42px"><input type="checkbox" id="w-case"> Only with these capitals</label></div>
+      </div>
+      <div class="row"><button type="button" class="btn accent" id="w-add">Add</button><button type="button" class="btn" id="w-hear"><span data-icon="speaker"></span>Hear it</button></div>
+      <p class="help">Spell it the way it sounds in that language. “Only with these capitals” keeps “US” (the country) from changing “us”.</p>
+    </section>
+    <section class="card panel">
+      <h2>Try a sentence</h2>
+      <textarea class="paste" id="w-test" rows="4" placeholder="El 25 de enero de 2026, el CJNG ofreció $5 millones…"></textarea>
+      <div class="row"><div class="select-wrap" style="flex:0 0 160px"><select class="select" id="w-test-lang"></select><span data-icon="chevron"></span></div>
+        <label class="check"><input type="checkbox" id="w-test-num" checked> Numbers as words</label></div>
+      <div class="summary" id="w-test-out">What the voice reads appears here.</div>
+    </section>
+  </div>
+  <div class="row between" style="margin:26px 0 12px"><div class="group-title" style="margin:0">Your words</div>
+    <div class="search"><span data-icon="search"></span><input class="input" id="w-search" placeholder="Search"></div></div>
+  <div class="card" style="padding:4px 18px"><table class="plain" id="w-table"></table></div>
+</main>
+
+<!-- ============ TRANSCRIBE ============ -->
+<main class="page" id="view-transcribe" hidden>
+  <div class="page-head">
+    <div>
+      <div class="title-row"><h1>Transcribe</h1><span class="kicker">SPEECH TO TEXT</span></div>
+      <p class="lede">Drop in a video or audio file and get its text and subtitles (TXT, SRT, VTT). Runs with Whisper on this PC.</p>
+    </div>
+  </div>
+  <div class="settings-grid">
+    <section class="card panel">
+      <label class="drop" id="t-drop">
+        <input type="file" id="t-file" accept="audio/*,video/*,.mp4,.mkv,.mov,.webm,.m4a,.wav,.mp3,.flac,.ogg" hidden>
+        <span data-icon="upload"></span>
+        <span id="t-drop-text">Drop a video or audio file here, or click to choose<br><small>MP4, MKV, MOV, WEBM, M4A, MP3, WAV, FLAC…</small></span>
+      </label>
+      <div class="pair">
+        <div class="field"><label class="label" for="t-lang">Language</label><div class="select-wrap"><select class="select" id="t-lang"></select><span data-icon="chevron"></span></div></div>
+        <div class="field"><label class="label" for="t-model">Whisper model</label><div class="select-wrap"><select class="select" id="t-model"></select><span data-icon="chevron"></span></div></div>
+      </div>
+      <label class="check"><input type="checkbox" id="t-translate"> Translate to English</label>
+      <p class="help" id="t-help"></p>
+      <button type="button" class="btn accent block" id="t-go" disabled>Transcribe</button>
+    </section>
+  </div>
+  <div class="group-title">Transcripts</div>
+  <div class="batch-list" id="t-list"></div>
 </main>
 
 <!-- ============ CONNECT ============ -->

@@ -75,10 +75,13 @@ everything (settings, models, engine, voices, batches) stays inside the project 
 
 ## Using it
 
-- **Voices** — add a 6–15 second clip of one person speaking (WAV, MP3, FLAC or OGG). The clip is trimmed,
-  levelled and checked (length, background noise, distortion), with *Reduce background noise* if it needs it;
-  the original file is kept, so you can prepare it again from a different part. *Hear it speak* reads a sample
-  sentence. Only add voices that are yours or that you have the right to use.
+- **Voices** — add a 6–15 second clip of one person speaking (WAV, MP3, FLAC, OGG, or a video). The clip is
+  trimmed, levelled and checked (length, background noise, distortion), with *Reduce background noise* if it needs
+  it; the original is kept, so you can prepare it again from a different part. A longer recording (an interview, a
+  video) uses its best 12 seconds of speech. *Hear it speak* reads a sample sentence. Only add voices that are
+  yours or that you have the right to use.
+- **Voice from music or video** — tick *Take the voice out of music or background sound* and the voice separator
+  (UVR MDX-Net, on the CPU, about 4× real time) keeps only the voice; a long file is cut to its best minute first.
 - **Find a new voice** — the model invents a different voice each time; keep the ones you like under a name.
   Nobody's real voice, so no permission is needed, and a kept voice stays the same from then on.
 - **Quick** (Create → Quick) — type or paste text, Ctrl+Enter. Quick takes are made right away, ahead of any
@@ -86,8 +89,17 @@ everything (settings, models, engine, voices, batches) stays inside the project 
 - **Batch** (Create → Batch) — one or many scripts: type them, *Paste and split* (start each script with a
   `### Title` line, or separate them with `---`), or *Import files* (each .txt/.md file is a script; a .csv has
   columns `text,title,voice,language`). Each script can have its own voice and language.
+- **Channel presets** — save the voice, language, speed, loudness, pauses and files under your channel's name and
+  pick them in one click (agents can use a preset by name too).
 - **Pauses** — blank lines start a new paragraph (0.7 s pause by default); add `[pause]` (1 s) or
   `[pause 2.5s]` anywhere.
+- **Speed** — 0.85× to 1.2× without changing the voice's pitch. Change it later on a finished batch (*Output*):
+  the files are rebuilt in seconds, nothing is spoken again.
+- **Pronunciation** (Settings → Pronunciation) — teach the voice names and abbreviations (`CJNG` → *ce jota ene ge*,
+  `EE.UU.` → *Estados Unidos*), per language, with *Hear it* to check. **Numbers as words**: years, money
+  (`$5 millones` → *cinco millones de dólares*), percentages, times and ordinals are read correctly in English,
+  Spanish, French, German, Italian and Portuguese. *See what the voice will read* shows the result before
+  speaking; your script and subtitles keep the original spelling.
 - **Output** — every finished script becomes `01_title.wav`, `01_title.mp3` and `01_title.srt` in the batch
   folder: joined, levelled to −16 LUFS (YouTube voiceover level; −14, −19, −23 also offered) with peaks under −1 dB.
   Subtitles use your script's exact words; Whisper only times them.
@@ -102,6 +114,9 @@ everything (settings, models, engine, voices, batches) stays inside the project 
   stops mid-batch, it carries on where it left off when it starts again.
 - **Batches** — every past batch with View, Folder, ZIP (finished files, or with every part), Re-run (same seed,
   same takes) and Delete; *Select* deletes several at once. Deletes go to the Windows Recycle Bin.
+- **Transcribe** — drop in a video or audio file and get its text plus SRT and VTT subtitles, with any Whisper
+  model, optionally translated to English. A 2-minute video takes about 15 seconds with Whisper small. Video files
+  need ffmpeg: the app uses the one on your PC, or downloads it on the Models page (Tools).
 
 ## Where things are
 
@@ -165,7 +180,9 @@ claude mcp add --scope user --transport http fatima-voice-studio http://127.0.0.
 | `regenerate_part`, `edit_part`, `edit_script`, `retry_failed` | Fix-ups |
 | `control_batch`, `rename_batch`, `move_in_queue` | Pause / resume / cancel, rename (folder too), queue order |
 | `export_batch` | Folder or ZIP into the Exports folder |
-| `add_voice`, `transcribe` | A voice from an allowed clip (needs `speaker_permission=true`); Whisper transcript |
+| `add_voice`, `transcribe` | A voice from an allowed clip (needs `speaker_permission=true`); a transcript (TXT/SRT/VTT) of an audio or video file |
+| `list_presets` | Channel presets; `speak` and `create_batch` take `preset=` and `speed=` |
+| `list_pronunciations`, `add_pronunciation`, `preview_reading` | The pronunciation dictionary, and what the voice will actually read |
 
 **Guard rails:** agents can't download models or delete anything; non-commercial models are refused unless
 allowed on the Connect page; files are only read from the folders allowed there (Music, Downloads, Desktop and

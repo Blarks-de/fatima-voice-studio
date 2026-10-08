@@ -55,6 +55,8 @@ DEFAULTS = {
     "mp3_bitrate": 192,
     "subtitles": True,       # SRT next to each finished script (needs the subtitles model)
     "subtitles_model": "",   # which Whisper times subtitles and transcribes ("" = best installed)
+    "speed": 1.0,            # 0.8-1.25: faster or slower speech, same pitch (applied when a script's files are made)
+    "spell_numbers": True,   # read 1913 / $5M / 35% / 5:30 as words (en, es, fr, de, it, pt)
     "pause_segment": 0.25,   # seconds of silence where a long paragraph was split
     "pause_paragraph": 0.7,  # seconds between paragraphs
     "max_chars": 600,        # longest piece of text sent to the engine at once (about 40 seconds of speech)
@@ -125,7 +127,24 @@ FILES = {
                                      "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"),
     "ggml-large-v3-q5_0.bin": (_WHISPER + "ggml-large-v3-q5_0.bin", 1081140203,
                                "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1"),
+    "UVR-MDX-NET-Voc_FT.onnx": ("https://github.com/k2-fsa/sherpa-onnx/releases/download/source-separation-models/"
+                                "UVR-MDX-NET-Voc_FT.onnx", 66762795,
+                                "e411182ce2c53541fefdcc99a8f46f2fe03978eb22038b9497c1d9d95a00fad4"),
 }
+
+# Programs the app can download besides the engine. ffmpeg reads video files (MP4, MKV, MOV, WEBM…); if it's
+# already installed on the PC (on PATH), that copy is used and nothing is downloaded.
+TOOLS = {
+    "ffmpeg": {"label": "ffmpeg (video files)", "exe": "ffmpeg.exe",
+               "about": "Lets the app read video files (MP4, MKV, MOV, WEBM…) for transcripts and voice clips.",
+               "license": "GPL v3 — a separate program; using it doesn't affect your audio",
+               "zip": ("https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
+                       114768076, "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba")},
+}
+
+
+def tool_dir(key: str) -> Path:
+    return HOME / "engine" / key
 
 # Language codes the voice models take; the label is shown in the app.
 LANGUAGES = {"en": "English", "es": "Spanish", "fr": "French", "de": "German", "it": "Italian",
@@ -172,6 +191,12 @@ MODELS = {
         "files": ["ggml-large-v3-q5_0.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-large-v3",
         "about": "The most accurate Whisper, and the slowest on the CPU. For hard audio: accents, noise, music underneath."},
 }
+MODELS["uvr-vocals"] = {
+    "kind": "separation", "label": "Voice separator (UVR MDX-Net)", "short": "Separates a voice from music",
+    "api_id": "uvr-mdx-net-voc-ft", "files": ["UVR-MDX-NET-Voc_FT.onnx"],
+    "license": "MIT — commercial use OK", "page": "https://github.com/Anjok07/ultimatevocalremovergui",
+    "about": "Takes the voice out of a clip with music or background sound under it, so it can become a clean "
+             "reference voice. Runs on the CPU, about 4× faster than real time."}
 SUBTITLE_PREFERENCE = ["whisper-small", "whisper-turbo", "whisper-medium", "whisper-base", "whisper-large"]
 
 
@@ -189,7 +214,9 @@ def voice_models() -> list[str]:
 
 EDITABLE = {"batches_dir", "exports_dir", "default_model", "default_language", "default_voice", "port", "api_key",
             "notify", "agent_read_dirs", "agents_noncommercial", "check_updates", "loudness", "formats", "mp3_bitrate",
-            "subtitles", "subtitles_model", "pause_segment", "pause_paragraph", "max_chars", "hf_token", "timeout_s"}
+            "subtitles", "subtitles_model", "pause_segment", "pause_paragraph", "max_chars", "hf_token", "timeout_s",
+            "speed", "spell_numbers"}
+SPEED_RANGE = (0.8, 1.25)
 
 
 def load() -> dict:

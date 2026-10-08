@@ -20,7 +20,11 @@ from starlette.background import BackgroundTask
 
 from . import APP_NAME, REPO_URL, __version__, audio, autostart, config, hardware, subtitles, text as textmod
 from .downloads import Downloads
+from . import media
 from .engine import Engine, EngineError
+from .presets import Presets
+from .transcribe import Transcripts
+from .speech_text import Dictionary, speakable
 from .store import SCRIPT_OVERRIDES, Store, batch_status, items_of, script_status, settings_for
 from .updater import Updater
 from .voices import Voices
@@ -64,8 +68,11 @@ def create_app(cfg: dict) -> FastAPI:
     store = Store(cfg["batches_dir"])
     engine = Engine(cfg)
     voices = Voices()
-    worker = Worker(store, engine, voices, cfg)
+    dictionary = Dictionary()
+    presets = Presets()
+    worker = Worker(store, engine, voices, cfg, dictionary)
     downloads = Downloads(cfg)
+    transcripts = Transcripts(cfg)
     updater = Updater(cfg)
     try:
         from .mcp_server import build as build_mcp
@@ -76,7 +83,8 @@ def create_app(cfg: dict) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app):
         shutil.rmtree(config.DATA / "tmp", ignore_errors=True)  # leftovers of a crash
-        tasks = [asyncio.create_task(worker.run()), asyncio.create_task(updater.watch())]
+        tasks = [asyncio.create_task(worker.run()), asyncio.create_task(updater.watch()),
+                 asyncio.create_task(transcripts.run())]
         log.info("%s on http://%s:%s  (batches: %s)", APP_NAME, cfg["host"], cfg["port"], store.root)
         if mcp:
             async with mcp.session_manager.run():  # MCP endpoint for AI agents at /mcp
@@ -135,7 +143,7 @@ def create_app(cfg: dict) -> FastAPI:
         v = voices.get(st.get("voice") or "")
         return {"n": s["n"], "title": s["title"], "stem": s["stem"], "status": script_status(b, s),
                 "voice": st.get("voice"), "voice_name": v["name"] if v else None, "language": st.get("language"),
-                "model": st.get("model"), "own": {k: s[k] for k in SCRIPT_OVERRIDES if s.get(k) not in (None, "")},
+                "model": st.get("model"), "out": {k: st.get(k) for k in ("speed", "loudness", "formats", "subtitles")}, "own": {k: s[k] for k in SCRIPT_OVERRIDES if s.get(k) not in (None, "")},
                 "segments": len(items), "done": sum(it["status"] == "done" for it in items),
                 "failed": sum(it["status"] == "failed" for it in items),
                 "checks": sum(1 for it in items if it.get("check")),
@@ -198,9 +206,16 @@ def create_app(cfg: dict) -> FastAPI:
         return key
 
     def batch_settings(raw: dict) -> dict:
-        """Settings for a new batch: the request's, falling back to Settings."""
+        """Settings for a new batch: the request's, then its preset's (if it names one), then Settings."""
+        if raw.get("preset"):
+            p = presets.get(str(raw["preset"]))
+            if not p:
+                raise HTTPException(400, f"No preset called “{raw['preset']}”.")
+            raw = p["settings"] | {k: v for k, v in raw.items() if k != "preset" and v not in (None, "")}
         s = {k: raw.get(k, cfg[k]) for k in ("loudness", "formats", "mp3_bitrate", "subtitles", "max_chars",
-                                              "pause_segment", "pause_paragraph")}
+                                              "pause_segment", "pause_paragraph", "speed", "spell_numbers")}
+        s["speed"] = round(max(config.SPEED_RANGE[0], min(config.SPEED_RANGE[1], float(s["speed"] or 1.0))), 3)
+        s["spell_numbers"] = bool(s["spell_numbers"])
         s["model"] = check_model(raw.get("model"))
         s["voice"] = check_voice(raw.get("voice") if "voice" in raw else cfg["default_voice"])
         s["language"] = check_language(raw.get("language") or (voices.get(s["voice"]) or {}).get("language"))
@@ -557,23 +572,49 @@ def create_app(cfg: dict) -> FastAPI:
 
     @app.post("/api/voices")
     async def add_voice(request: Request):
+        """A voice from an audio or video file. With separate=1 the voice is first taken out of any music under it.
+        A long recording (a video, an interview) uses its best 12 seconds unless start/end are given."""
         form = await request.form()
         upload = form.get("file")
         if not hasattr(upload, "read"):
-            raise HTTPException(400, "Choose an audio file (WAV, MP3, FLAC or OGG).")
-        data = await upload.read()
-        if len(data) > 50 * 1024 * 1024:
-            raise HTTPException(400, "That file is over 50 MB. A voice needs only 5–15 seconds of speech.")
+            raise HTTPException(400, "Choose an audio or video file.")
         language = str(form.get("language") or "")
         if language and language not in config.LANGUAGES:
             raise HTTPException(400, "Unsupported language")
+        filename = getattr(upload, "filename", "") or "clip.wav"
+        separate = form.get("separate") in ("1", "true", "on")
+        tmp = config.DATA / "tmp"
+        tmp.mkdir(parents=True, exist_ok=True)
+        src = tmp / f"up-{uuid.uuid4().hex[:10]}{Path(filename).suffix.lower()[:6]}"
+        with open(src, "wb") as f:  # stream to disk: a video can be large
+            await asyncio.to_thread(shutil.copyfileobj, upload.file, f, 1 << 20)
+        kwargs = dict(name=str(form.get("name") or ""), filename=filename, language=language,
+                      notes=str(form.get("notes") or ""), denoise=form.get("denoise") in ("1", "true", "on"),
+                      start=form_float(form, "start"), end=form_float(form, "end"))
         try:
-            v = await asyncio.to_thread(voices.add, name=str(form.get("name") or ""), data=data,
-                                        filename=getattr(upload, "filename", "") or "clip.wav", language=language,
-                                        notes=str(form.get("notes") or ""), denoise=form.get("denoise") in ("1", "true", "on"),
-                                        start=form_float(form, "start"), end=form_float(form, "end"))
-        except ValueError as e:
+            is_media = src.suffix.lower() in media.VIDEO_EXT or src.stat().st_size > 50 * 1024 * 1024
+            if separate or is_media:
+                samples, sr = await asyncio.to_thread(media.decode, src, 44100 if separate else None)
+                extra = {}
+                if separate:
+                    # Only separate what's needed: the chosen range, or the most speech-filled minute of a long file.
+                    start, end = kwargs.pop("start"), kwargs.pop("end")
+                    if start is None and end is None and len(samples) > 90 * sr:
+                        start, end = media.best_window(samples, sr, 60.0)
+                    if start is not None or end is not None:
+                        a, b_ = int((start or 0) * sr), int(end * sr) if end else len(samples)
+                        samples = samples[a:b_]
+                        extra["range_in_file"] = [round(start or 0, 2), round(b_ / sr, 2)]
+                    samples, sr = await asyncio.to_thread(media.separate_voice, samples, sr, cfg)
+                    extra["separated"] = True
+                    kwargs.update(start=None, end=None)
+                v = await asyncio.to_thread(voices.add, decoded=(samples, sr), extra=extra, **kwargs)
+            else:
+                v = await asyncio.to_thread(voices.add, data=src.read_bytes(), **kwargs)
+        except (ValueError, media.MediaError) as e:
             raise HTTPException(400, str(e))
+        finally:
+            src.unlink(missing_ok=True)
         if not cfg["default_voice"]:
             cfg["default_voice"] = v["id"]
             config.save(cfg)
@@ -715,6 +756,192 @@ def create_app(cfg: dict) -> FastAPI:
             cfg["default_voice"] = v["id"]
             config.save(cfg)
         return v
+
+    # ---- tools (ffmpeg) and transcripts -----------------------------------------------------
+
+    @app.get("/api/tools")
+    def list_tools():
+        return downloads.tools()
+
+    @app.post("/api/tools/{key}/{action}")
+    async def tool_action(key: str, action: str):
+        if key not in config.TOOLS:
+            raise HTTPException(404, "Unknown tool")
+        try:
+            if action == "download":
+                downloads.start_tool(key)
+            elif action == "cancel":
+                downloads.cancel("tool:" + key)
+            elif action == "remove":
+                await asyncio.to_thread(downloads.delete_tool, key)
+            else:
+                raise HTTPException(404, "Unknown action")
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+        return downloads.tools()
+
+    @app.get("/api/transcripts")
+    def list_transcripts():
+        return transcripts.list()
+
+    @app.post("/api/transcripts")
+    async def add_transcript(request: Request):
+        form = await request.form()
+        upload = form.get("file")
+        if not hasattr(upload, "read"):
+            raise HTTPException(400, "Choose an audio or video file.")
+        model = str(form.get("model") or "") or None
+        if model and config.MODELS.get(model, {}).get("kind") != "subtitles":
+            raise HTTPException(400, "Unknown Whisper model")
+        if not subtitles.whisper_available(cfg):
+            raise HTTPException(400, "No Whisper model is downloaded. Get one on the Models page.")
+        filename = getattr(upload, "filename", "") or "audio"
+        if Path(filename).suffix.lower() in media.VIDEO_EXT and not media.ffmpeg_exe():
+            raise HTTPException(400, "Reading video needs ffmpeg. Download it on the Models page (Tools), then try again.")
+        language = str(form.get("language") or "") or None
+        if language and language not in config.LANGUAGES:
+            raise HTTPException(400, "Unsupported language")
+        tmp = config.DATA / "tmp"
+        tmp.mkdir(parents=True, exist_ok=True)
+        src = tmp / f"tr-{uuid.uuid4().hex[:10]}{Path(filename).suffix.lower()[:6]}"
+        with open(src, "wb") as f:
+            await asyncio.to_thread(shutil.copyfileobj, upload.file, f, 1 << 20)
+        return transcripts.add(src, filename, model=model, language=language,
+                               translate=form.get("translate") in ("1", "true", "on"))
+
+    @app.get("/api/transcripts/{tid}/{fmt}")
+    def transcript_file(tid: str, fmt: str, download: int = 0):
+        t = transcripts.items.get(tid)
+        if not t or fmt not in t.get("files", {}):
+            raise HTTPException(404, "No such transcript file")
+        path = transcripts.folder(t) / t["files"][fmt]
+        media_type = {"txt": "text/plain; charset=utf-8", "srt": "text/plain; charset=utf-8",
+                      "vtt": "text/vtt; charset=utf-8", "json": "application/json"}[fmt]
+        return FileResponse(path, media_type=media_type, filename=path.name if download else None)
+
+    @app.delete("/api/transcripts/{tid}")
+    def delete_transcript(tid: str):
+        try:
+            transcripts.delete(tid)
+        except KeyError:
+            raise HTTPException(404, "No such transcript")
+        except OSError as e:
+            raise HTTPException(409, str(e))
+        return {"deleted": tid}
+
+    # ---- presets, pronunciation, output settings of a batch ------------------------------
+
+    @app.get("/api/presets")
+    def list_presets():
+        return presets.list()
+
+    class PresetIn(BaseModel):
+        name: str = Field(min_length=1, max_length=60)
+        settings: dict
+
+    @app.post("/api/presets")
+    def save_preset(body: PresetIn):
+        s = dict(body.settings)
+        if s.get("voice"):
+            s["voice"] = check_voice(s["voice"])
+        if s.get("language"):
+            s["language"] = check_language(s["language"])
+        try:
+            return presets.save(body.name, s)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.delete("/api/presets/{pid}")
+    def delete_preset(pid: str):
+        try:
+            presets.delete(pid)
+        except KeyError:
+            raise HTTPException(404, "No such preset")
+        return {"deleted": pid}
+
+    @app.get("/api/dictionary")
+    def list_words():
+        return sorted(dictionary.entries, key=lambda e: (e["language"], e["from"].lower()))
+
+    class WordIn(BaseModel):
+        written: str = Field(min_length=1, max_length=120)
+        said: str = Field(min_length=1, max_length=300)
+        language: str = ""
+        case: bool = False
+
+    @app.post("/api/dictionary")
+    def add_word(body: WordIn):
+        try:
+            return dictionary.add(body.written, body.said, body.language, body.case)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    class WordEdit(BaseModel):
+        written: str | None = None
+        said: str | None = None
+        language: str | None = None
+        case: bool | None = None
+
+    @app.patch("/api/dictionary/{eid}")
+    def edit_word(eid: str, body: WordEdit):
+        try:
+            return dictionary.update(eid, **{"from": body.written, "to": body.said, "language": body.language, "case": body.case})
+        except KeyError:
+            raise HTTPException(404, "No such entry")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.delete("/api/dictionary/{eid}")
+    def delete_word(eid: str):
+        dictionary.delete(eid)
+        return {"deleted": eid}
+
+    class SpeakableIn(BaseModel):
+        text: str = Field(max_length=MAX_TEXT)
+        language: str | None = None
+        spell_numbers: bool | None = None
+
+    @app.post("/api/speakable")
+    def speakable_preview(body: SpeakableIn):
+        """What the voice will actually read for this text (dictionary + numbers), without speaking it."""
+        lang = check_language(body.language)
+        numbers = cfg["spell_numbers"] if body.spell_numbers is None else body.spell_numbers
+        return {"text": speakable(body.text, lang, dictionary, numbers), "language": lang,
+                "numbers_supported": lang in ("en", "es", "fr", "de", "it", "pt")}
+
+    class OutputEdit(BaseModel):
+        speed: float | None = Field(None, ge=config.SPEED_RANGE[0], le=config.SPEED_RANGE[1])
+        loudness: float | None = Field(None, ge=-30, le=-9)
+        formats: list[str] | None = None
+        subtitles: bool | None = None
+        pause_paragraph: float | None = Field(None, ge=0, le=10)
+
+    @app.patch("/api/batches/{batch_id}/settings")
+    def edit_output(batch_id: str, body: OutputEdit, script: int | None = None):
+        """Change the output (speed, loudness, files, subtitles) and rebuild — no re-speaking. For the whole batch, or
+        with ?script=n for one script only (each Quick take has its own)."""
+        b = get_batch(batch_id)
+        changes = {k: v for k, v in body.model_dump().items() if v is not None}
+        if "formats" in changes:
+            changes["formats"] = [f for f in changes["formats"] if f in ("wav", "mp3")]
+            if not changes["formats"]:
+                raise HTTPException(400, "Choose WAV, MP3 or both.")
+        if script is not None:
+            s = get_script(b, script)
+            ensure_idle(b, s)
+            s.setdefault("settings", {}).update(changes)
+            worker.refinish(b, s)
+            store.save(b)
+            worker.notify()
+            return summarize(b, full=True)
+        if b.get("kind") == "singles":
+            raise HTTPException(400, "Each Quick take has its own output: use the Output button on the take.")
+        b["settings"].update(changes)
+        for s in b["scripts"]:
+            worker.refinish(b, s)
+        store.save(b)
+        worker.notify()
+        return summarize(b, full=True)
 
     # ---- models, engine, setup ------------------------------------------------------
 
@@ -910,13 +1137,13 @@ def create_app(cfg: dict) -> FastAPI:
             changes["formats"] = [f for f in changes["formats"] if f in ("wav", "mp3")]
             if not changes["formats"]:
                 raise HTTPException(400, "Choose WAV, MP3 or both.")
-        for key in ("notify", "agents_noncommercial", "check_updates", "subtitles"):
+        for key in ("notify", "agents_noncommercial", "check_updates", "subtitles", "spell_numbers"):
             if key in changes:
                 changes[key] = bool(changes[key])
         for key, lo, hi in (("port", 1024, 65535), ("mp3_bitrate", 64, 320), ("max_chars", 150, 1200), ("timeout_s", 60, 7200)):
             if key in changes:
                 changes[key] = max(lo, min(hi, int(changes[key])))
-        for key, lo, hi in (("loudness", -30, -9), ("pause_segment", 0, 5), ("pause_paragraph", 0, 10)):
+        for key, lo, hi in (("loudness", -30, -9), ("pause_segment", 0, 5), ("pause_paragraph", 0, 10), ("speed", *config.SPEED_RANGE)):
             if key in changes:
                 changes[key] = max(lo, min(hi, float(changes[key])))
         if "hf_token" in changes:
@@ -994,12 +1221,11 @@ def create_app(cfg: dict) -> FastAPI:
                                      "or set a default voice in Settings.")
         lang = check_language(p.language or v.get("language"))
         try:
+            # OpenAI allows 0.25-4; speech stays natural between 0.8 and 1.25, so the speed is kept in that range.
             track, sr = await worker.speech(p.input, voice=v["id"], language=lang, model=check_model(p.model),
-                                            seed=p.seed, loudness=cfg["loudness"])
+                                            seed=p.seed, loudness=cfg["loudness"], speed=p.speed)
         except (EngineError, ValueError) as e:
             raise HTTPException(500, str(e))
-        if p.speed != 1.0:
-            log.info("speed=%s requested; the voice model has no speed control, so it was ignored", p.speed)
         if p.response_format == "mp3":
             data = await asyncio.to_thread(audio.mp3_bytes, track, sr, cfg["mp3_bitrate"])
         elif p.response_format == "pcm":

@@ -11,3 +11,5 @@ numpy>=2                # audio processing (loudness, limiter, noise reduction)
 soundfile>=0.12         # reading WAV/MP3/FLAC/OGG and writing WAV (bundles libsndfile)
 lameenc>=1.7            # MP3 encoding (LAME)
 pywin32>=306            # Windows integration used by pystray
+num2words>=0.5.13        # numbers as words (1913 -> nineteen thirteen) in six languages
+sherpa-onnx>=1.12         # voice separator (UVR MDX-Net, ONNX Runtime on the CPU)

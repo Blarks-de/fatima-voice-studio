@@ -206,6 +206,7 @@ audio { width: 100%; height: 40px; }
 .seg-row.flag { background: linear-gradient(90deg, var(--warn-soft), transparent 70%); }
 .seg-row.running { background: linear-gradient(90deg, var(--accent-soft), transparent 70%); }
 .flag-note { font-size: 11px; color: var(--warn); margin-top: 4px; }
+.read-as { font-size: 12px; color: var(--accent); margin-top: 4px; font-style: italic; }
 .err-note { font-size: 11px; color: var(--red-hi); margin-top: 4px; }
 
 /* ---------- voices ---------- */

@@ -89,7 +89,7 @@ $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if ($LASTEXITCODE -ne 0) { throw "launcher build failed" }
 
 # 6. Smoke test: the bundled Python imports the whole app, and the launcher starts it.
-& "$Stage\python\python.exe" -c "import studio.app, studio.tray, studio.mcp_server, numpy, soundfile, lameenc, win32api; print('imports ok')"
+& "$Stage\python\python.exe" -c "import studio.app, studio.tray, studio.mcp_server, numpy, soundfile, lameenc, num2words, sherpa_onnx, win32api; print('imports ok')"
 if ($LASTEXITCODE -ne 0) { throw "the bundled runtime can't import the app" }
 $check = Start-Process "$Stage\FatimaVoiceStudio.exe" -ArgumentList "--check" -Wait -PassThru
 if ($check.ExitCode -ne 0) { throw "FatimaVoiceStudio.exe --check failed ($($check.ExitCode))" }

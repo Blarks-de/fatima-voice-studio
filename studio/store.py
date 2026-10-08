@@ -213,7 +213,7 @@ class Store:
         script = self._make_script(b, n, {"text": text, "voice": settings.get("voice"),
                                           "language": settings.get("language"), "seed": int(seed)}, 3)
         # Singles keep each one's own output settings (they can differ from one single to the next).
-        script["settings"] = {k: settings[k] for k in ("model", "loudness", "formats", "mp3_bitrate", "subtitles") if k in settings}
+        script["settings"] = {k: settings[k] for k in ("model", "loudness", "formats", "mp3_bitrate", "subtitles", "speed", "spell_numbers") if k in settings}
         b["scripts"].append(script)
         b["items"] += self._make_items(b, script)
         b["paused"] = False

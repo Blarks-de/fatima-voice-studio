@@ -220,6 +220,47 @@ class Downloads:
         self.discard_engine(key)
         shutil.rmtree(config.engine_dir(self.cfg, key), ignore_errors=True)
 
+    # ---- tools (job key "tool:<id>"), e.g. ffmpeg for video files ----
+
+    def tools(self) -> list[dict]:
+        from .media import ffmpeg_source
+        out = []
+        for key, t in config.TOOLS.items():
+            url, size, _ = t["zip"]
+            part = config.tool_dir(key).parent / (url.rsplit("/", 1)[1] + ".part")
+            source = ffmpeg_source() if key == "ffmpeg" else None
+            out.append({"key": key, "label": t["label"], "about": t["about"], "license": t["license"], "size": size,
+                        "installed": source == "app", "on_pc": source == "system", "ready": bool(source),
+                        "partial": part.stat().st_size if part.exists() else 0, "job": self.jobs.get("tool:" + key)})
+        return out
+
+    def start_tool(self, key: str) -> None:
+        if key not in config.TOOLS:
+            raise ValueError("Unknown tool")
+        self._launch("tool:" + key, self._run_tool(key))
+
+    async def _run_tool(self, key: str) -> None:
+        job = self.jobs["tool:" + key]
+        t = config.TOOLS[key]
+        job["total"] = t["zip"][1]
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30, read=300)) as client:
+                await self._install_zips(client, [t["zip"]], config.tool_dir(key), t["exe"], job)
+            job["status"] = "done"
+        except asyncio.CancelledError:
+            job["status"] = "cancelled"
+        except Exception as e:
+            log.exception("Tool %s download failed", key)
+            job.update(status="failed", error=str(e) or e.__class__.__name__)
+
+    def delete_tool(self, key: str) -> None:
+        if self.busy("tool:" + key):
+            raise RuntimeError("That download is still running. Cancel it first.")
+        url = config.TOOLS[key]["zip"][0]
+        (config.tool_dir(key).parent / (url.rsplit("/", 1)[1] + ".part")).unlink(missing_ok=True)
+        shutil.rmtree(config.tool_dir(key), ignore_errors=True)
+        self.jobs.pop("tool:" + key, None)
+
     # ---- removing models ----
 
     def discard(self, key: str) -> list[str]:

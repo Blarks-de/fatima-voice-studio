@@ -70,23 +70,35 @@ class Voices:
             vid, i = f"{base}-{i}", i + 1
         return vid
 
-    def add(self, *, name: str, data: bytes, filename: str, language: str = "", notes: str = "",
-            denoise: bool = False, source: str = "clip", start: float | None = None, end: float | None = None) -> dict:
+    def add(self, *, name: str, filename: str, data: bytes | None = None, decoded: tuple | None = None,
+            language: str = "", notes: str = "", denoise: bool = False, source: str = "clip",
+            start: float | None = None, end: float | None = None, extra: dict | None = None) -> dict:
+        """From file bytes (`data`), or from audio already decoded/separated (`decoded` = (samples, sr), kept as
+        original.flac). A long recording with no range given uses its best 12 seconds of speech."""
+        from .media import best_window
         name = name.strip()
         if not name:
             raise ValueError("Give the voice a name.")
         if self.get(name):
             raise ValueError(f"There's already a voice called “{name}”.")
-        raw, sr = audio.load(data)  # validates it's audio before anything is written
+        raw, sr = decoded if decoded is not None else audio.load(data)  # validates it's audio before anything is written
         if len(raw) < sr * 1.0:
             raise ValueError("That clip is shorter than a second. Use 5–15 seconds of clear speech.")
+        if start is None and end is None and len(raw) > 25 * sr:
+            start, end = best_window(raw, sr, 12.0)
         vid = self._unique_id(name)
         folder = self.root / vid
         folder.mkdir(parents=True)
-        ext = (Path(filename).suffix.lower() or ".wav")[:6]
-        (folder / f"original{ext}").write_bytes(data)
+        if decoded is not None:
+            original = "original.flac"
+            import soundfile as sf
+            sf.write(str(folder / original), np.clip(raw, -1, 1), sr, format="FLAC")
+        else:
+            original = "original" + (Path(filename).suffix.lower() or ".wav")[:6]
+            (folder / original).write_bytes(data)
         v = {"id": vid, "name": name, "language": language, "notes": notes.strip(), "source": source,
-             "created": dt.datetime.now().isoformat(timespec="seconds"), "original": f"original{ext}"}
+             "created": dt.datetime.now().isoformat(timespec="seconds"), "original": original,
+             "from_file": Path(filename).name, **(extra or {})}
         try:
             self._prepare(v, raw, sr, denoise=denoise, start=start, end=end)
         except Exception:

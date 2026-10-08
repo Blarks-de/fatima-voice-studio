@@ -36,6 +36,8 @@ const ICONS = {
   star: '<path d="m12 3 2.8 5.8 6.2.9-4.5 4.4 1 6.2L12 17.4 6.5 20.3l1-6.2L3 9.7l6.2-.9L12 3Z"/>',
   dice: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 8h.01M16 8h.01M12 12h.01M8 16h.01M16 16h.01"/>',
   speaker: '<path d="M11 5 6 9H3v6h3l5 4V5ZM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/>',
+  text: '<path d="M4 6h16M4 11h16M4 16h10"/>',
+  gauge: '<path d="M12 14l4-4M4 18a9 9 0 1 1 16 0"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 function paintIcons(root = document) { root.querySelectorAll('[data-icon]').forEach((el) => { el.outerHTML = icon(el.dataset.icon); }); }
@@ -154,7 +156,7 @@ function languageOptions(selected) {
 }
 
 // ---------- routing ----------
-const VIEWS = ['create', 'batches', 'batch', 'voices', 'models', 'setup', 'connect', 'settings'];
+const VIEWS = ['create', 'batches', 'batch', 'voices', 'models', 'setup', 'connect', 'settings', 'words', 'transcribe'];
 function route() {
   const [view, arg] = (location.hash.slice(1) || 'create').split('/');
   let v = VIEWS.includes(view) ? view : 'create';
@@ -162,12 +164,13 @@ function route() {
   S.view = v; S.arg = arg ? decodeURIComponent(arg) : null;
   VIEWS.forEach((x) => { $(`view-${x}`).hidden = x !== v; });
   document.querySelectorAll('.nav a').forEach((a) => {
-    const on = a.dataset.view === v || (v === 'batch' && a.dataset.view === 'batches') || (v === 'setup' && a.dataset.view === 'settings' && !document.body.classList.contains('locked'));
+    const on = a.dataset.view === v || (v === 'batch' && a.dataset.view === 'batches')
+      || (['setup', 'words'].includes(v) && a.dataset.view === 'settings' && !document.body.classList.contains('locked'));
     if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   $('settings-menu').hidden = true;
   ({ create: showCreate, batches: loadBatches, batch: loadDetail, voices: loadVoices, models: loadModels, setup: loadSetup,
-     connect: loadConnect, settings: loadSettings })[v]?.();
+     connect: loadConnect, settings: loadSettings, words: loadWords, transcribe: loadTranscribe })[v]?.();
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', route);
@@ -376,6 +379,8 @@ function fillCreateSelects() {
   }
   if (!$('fmt-wav').dataset.touched && s.formats) { $('fmt-wav').checked = s.formats.includes('wav'); $('fmt-mp3').checked = s.formats.includes('mp3'); }
   if (!$('opt-srt').dataset.touched && s.subtitles != null) $('opt-srt').checked = s.subtitles;
+  if (!$('speed').dataset.touched && s.speed != null) setSelect($('speed'), s.speed);
+  if (!$('opt-numbers').dataset.touched && s.spell_numbers != null) $('opt-numbers').checked = s.spell_numbers;
 }
 $('voice').addEventListener('change', () => {
   const v = S.voices.find((x) => x.id === $('voice').value);
@@ -386,6 +391,13 @@ $('language').addEventListener('change', () => { $('language').dataset.touched =
 ['loudness', 'fmt-wav', 'fmt-mp3', 'opt-srt'].forEach((id) => $(id).addEventListener('change', () => { $(id).dataset.touched = '1'; }));
 $('model').addEventListener('change', fillCreateSelects);
 
+// Select the option closest to a value (speeds and loudness are numbers; options are a few steps).
+function setSelect(sel, value) {
+  const opts = [...sel.options];
+  const best = opts.reduce((a, o) => (Math.abs(Number(o.value) - Number(value)) < Math.abs(Number(a.value) - Number(value)) ? o : a), opts[0]);
+  if (best) sel.value = best.value;
+}
+
 function licenseBadge(m) {
   return m.noncommercial ? `<span class="license nc">${icon('alert')} ${esc(m.license)}</span>` : `<span class="license ok">${icon('check')} ${esc(m.license)}</span>`;
 }
@@ -394,7 +406,8 @@ function createSettings() {
   const formats = [$('fmt-wav').checked && 'wav', $('fmt-mp3').checked && 'mp3'].filter(Boolean);
   const out = { voice: $('voice').value, language: $('language').value, model: $('model').value,
                 formats: formats.length ? formats : ['mp3'], subtitles: $('opt-srt').checked,
-                loudness: Number($('loudness').value), pause_paragraph: Number($('pause-paragraph').value || 0.7) };
+                loudness: Number($('loudness').value), pause_paragraph: Number($('pause-paragraph').value || 0.7),
+                speed: Number($('speed').value), spell_numbers: $('opt-numbers').checked };
   if ($('seed').value !== '') out.seed = Number($('seed').value);
   return out;
 }
@@ -412,14 +425,17 @@ function updateSummary() {
         const r = await api('/api/split-preview', { method: 'POST', json: { text: t, pause_paragraph: Number($('pause-paragraph').value || 0.7) } });
         segs += r.segments; est += r.estimate_s + r.pauses_s;
       }
-      const speed = S.setupBench?.x_realtime || 2;
-      const make = est / speed + filled.length * 3;
+      const pace = Number($('speed').value) || 1;
+      const make = est / (S.setupBench?.x_realtime || 2) + filled.length * 3;  // the engine speaks at natural pace
+      est /= pace;
       $('summary').innerHTML = `${S.cmode === 'batch' ? `<b>${plural(filled.length, 'script')}</b> · ` : ''}<b>${plural(segs, 'part')}</b> · about <b>${fmtDur(est)}</b> of audio · ready in about <b>${fmtDur(make)}</b>${S.setupBench ? '' : ' (estimate; run the speed test in Setup for yours)'}`;
     } catch { /* server busy */ }
   }, 350);
 }
 $('single-text').addEventListener('input', () => { saveDraft(); updateSummary(); });
 $('pause-paragraph').addEventListener('input', updateSummary);
+$('speed').addEventListener('change', () => { $('speed').dataset.touched = '1'; updateSummary(); });
+$('opt-numbers').addEventListener('change', () => { $('opt-numbers').dataset.touched = '1'; });
 $('batch-name').addEventListener('input', saveDraft);
 $('single-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('go').click(); } });
 
@@ -507,6 +523,7 @@ $('queue-list').addEventListener('click', run(async (e) => {
 
 async function showCreate() {
   await loadVoicesList();
+  loadPresets();
   fillCreateSelects(); renderScripts(); updateSummary(); renderQueue();
   if (S.single) renderSingle();
 }
@@ -606,6 +623,7 @@ function segRow(d, it) {
   return `<div class="seg-row${it.check ? ' flag' : ''}${running ? ' running' : ''}" data-item="${it.id}">
     <span class="k">${it.k}</span>
     <div><div class="txt">${esc(it.text)}</div>
+      ${it.spoken ? `<div class="read-as" title="What the voice reads: the pronunciation dictionary and numbers as words. Subtitles keep your text.">Read as: ${esc(it.spoken)}</div>` : ''}
       <div class="sub">${chip(running ? 'running' : it.status)}${it.audio_s ? `<span>${it.audio_s.toFixed(1)} s</span>` : ''}${it.duration ? `<span>made in ${it.duration.toFixed(1)} s</span>` : ''}<span>seed ${it.seed}</span>${it.pause_after ? `<span>then ${it.pause_after} s pause</span>` : ''}</div>
       ${it.check ? `<div class="flag-note">${icon('alert')} ${esc(it.check)}</div>` : ''}
       ${it.error ? `<div class="err-note">${esc(it.error)}</div>` : ''}</div>
@@ -630,6 +648,7 @@ function renderDetail() {
     busy || d.paused ? `<button class="btn sm" data-d="cancel">${icon('stop')} Stop</button>` : '',
     d.failed || d.cancelled ? `<button class="btn sm accent" data-d="retry">${icon('refresh')} Retry</button>` : '',
     d.scripts_done ? `<a class="btn sm" href="/api/batches/${d.id}/export.zip?content=final">${icon('download')} ZIP</a><a class="btn sm" href="/api/batches/${d.id}/export.zip?content=both" title="Finished files plus every part">${icon('download')} ZIP + parts</a>` : '',
+    d.kind === 'singles' ? '' : `<button class="btn sm" data-d="output" title="Speed, loudness, files and subtitles — finished scripts are rebuilt, not spoken again">${icon('gauge')} Output</button>`,
     `<button class="btn sm" data-d="open">${icon('folder')} Folder</button>`,
     `<button class="btn sm" data-d="rerun">${icon('refresh')} Re-run</button>`,
     busy ? '' : `<button class="icon-btn" data-d="delete" aria-label="Delete batch">${icon('trash')}</button>`,
@@ -645,6 +664,7 @@ function renderDetail() {
     return `<section class="card scard" data-n="${s.n}">
       <div class="top">${chip(s.status)}<span class="title">${esc(s.title)}</span><span class="stem">${esc(s.stem)}</span>
         <button class="btn xs" data-s="edit">${icon('pencil')} Edit script</button>
+        ${d.kind === 'singles' ? `<button class="btn xs" data-s="output" title="Speed, loudness, files and subtitles of this take">${icon('gauge')} Output</button>` : ''}
         ${s.status === 'done' ? `<button class="btn xs" data-s="refinish" title="Rebuild the WAV/MP3/SRT from the parts (after changing loudness or formats in Settings)">${icon('refresh')} Rebuild files</button>` : ''}
         ${d.scripts.length > 1 ? `<button class="icon-btn" data-s="delete" aria-label="Delete script">${icon('trash')}</button>` : ''}</div>
       <div class="info"><span>${esc(s.voice_name || voiceName(s.voice))}</span><span>${esc(langName(s.language))}</span>
@@ -669,6 +689,7 @@ $('b-scripts').addEventListener('toggle', (e) => {
 }, true);
 $('b-actions').addEventListener('click', run(async (e) => {
   const b = e.target.closest('[data-d]'); if (!b) return;
+  if (b.dataset.d === 'output') return editOutput();
   await batchAction(S.detail.id, b.dataset.d);
   if (S.view === 'batch') loadDetail();
 }));
@@ -701,6 +722,8 @@ $('b-scripts').addEventListener('click', run(async (e) => {
       if (!Object.keys(body).length) return;
       S.detail = await api(`/api/batches/${d.id}/scripts/${n}`, { method: 'PATCH', json: body });
       toast('Saved. Changed parts are queued.', true);
+    } else if (sb.dataset.s === 'output') {
+      return editOutput(n);
     } else if (sb.dataset.s === 'refinish') {
       S.detail = await api(`/api/batches/${d.id}/scripts/${n}/refinish`, { method: 'POST' });
       toast('Rebuilding the files…', true);
@@ -733,6 +756,7 @@ async function loadVoices() {
   const lang = $('voice-lang').value || S.state?.default_language || 'en';
   $('voice-lang').innerHTML = languageOptions(lang);
   $('find-lang').innerHTML = languageOptions($('find-lang').value || lang);
+  separateHelp();
   renderVoiceCards();
 }
 function renderVoiceCards() {
@@ -778,7 +802,9 @@ $('voice-add').addEventListener('click', run(async () => {
   form.append('file', S.voiceFile); form.append('name', $('voice-name').value.trim());
   form.append('language', $('voice-lang').value); form.append('notes', $('voice-notes').value);
   form.append('denoise', $('voice-denoise').checked ? '1' : '0');
-  $('voice-add').disabled = true; $('voice-add').textContent = 'Preparing the clip…';
+  form.append('separate', $('voice-separate').checked ? '1' : '0');
+  $('voice-add').disabled = true;
+  $('voice-add').textContent = $('voice-separate').checked ? 'Taking the voice out of the music… (a minute or two for long files)' : 'Preparing the clip…';
   try {
     const v = await api('/api/voices', { method: 'POST', form });
     toast(`Added “${v.name}” (${v.seconds} s clip).${v.advice?.length ? ' ' + v.advice[0] : ''}`, !v.advice?.length);
@@ -857,9 +883,14 @@ async function loadModels() {
   try { models = await api('/api/models'); } catch (e) { toast(e.message); return; }
   const group = (kind, title, help) => `<div class="group-title">${title}</div><p class="help" style="margin:-6px 0 12px">${help}</p>`
     + models.filter((m) => m.kind === kind).map(modelCard).join('');
+  const tools = await api('/api/tools');
   setHtml($('models-list'), group('voice', 'Voice models', 'Speak your scripts. Each runs on the engine chosen on the Setup page.')
-    + group('subtitles', 'Subtitles and transcripts', 'Time the SRT subtitles of every finished script, and power the transcription API. Run on the CPU; the small one is plenty for subtitles.'));
-  if (models.some((m) => m.job && ['downloading', 'checking', 'installing'].includes(m.job.status))) setTimeout(() => S.view === 'models' && loadModels(), 1000);
+    + group('subtitles', 'Subtitles and transcripts', 'Time the SRT subtitles of every finished script, and power the Transcribe page and the transcription API. Run on the CPU; the small one is plenty for subtitles.')
+    + group('separation', 'Voice separator', 'Takes a voice out of music or background sound when you add a voice from a video or a song.')
+    + `<div class="group-title">Tools</div><p class="help" style="margin:-6px 0 12px">Programs the app uses for some file types.</p>`
+    + tools.map(toolCard).join(''));
+  const busy = (j) => j && ['downloading', 'checking', 'installing'].includes(j.status);
+  if (models.some((m) => busy(m.job)) || tools.some((t) => busy(t.job))) setTimeout(() => S.view === 'models' && loadModels(), 1000);
 }
 function dlBox(job, total, partial, kind, key) {
   if (job && ['downloading', 'checking', 'installing'].includes(job.status)) {
@@ -869,6 +900,24 @@ function dlBox(job, total, partial, kind, key) {
   }
   return '';
 }
+function toolCard(t) {
+  const busy = t.job && ['downloading', 'checking', 'installing'].includes(t.job.status);
+  let acts;
+  if (busy) acts = dlBox(t.job, t.size, t.partial, 't', t.key);
+  else if (t.installed) acts = `<span class="chip ok">${icon('check')} Downloaded</span><button class="btn sm" data-t="remove" data-key="${t.key}">Remove</button>`;
+  else if (t.on_pc) acts = `<span class="chip ok">${icon('check')} Already on this PC</span>`;
+  else acts = `<button class="btn sm accent" data-t="download" data-key="${t.key}">${icon('download')} Download ${fmtSize(t.size - t.partial)}</button>`;
+  return `<div class="card mcard"><div class="main"><div class="name">${esc(t.label)} <span class="license ok">${esc(t.license)}</span></div>
+      <div class="about">${esc(t.about)}</div>${t.job?.status === 'failed' ? `<div class="err-note">${esc(t.job.error)}</div>` : ''}</div>
+    <div class="acts">${acts}</div></div>`;
+}
+document.addEventListener('click', run(async (e) => {
+  const b = e.target.closest('[data-t]'); if (!b) return;
+  if (b.dataset.t === 'remove' && !await confirmDialog('Remove ffmpeg?', 'Video files can no longer be read until you download it again.', 'Remove')) return;
+  await api(`/api/tools/${b.dataset.key}/${b.dataset.t}`, { method: 'POST' });
+  setTimeout(loadModels, 300);
+}));
+
 function modelCard(m) {
   const busy = m.job && ['downloading', 'checking', 'installing'].includes(m.job.status);
   let acts;
@@ -1035,6 +1084,8 @@ async function loadSettings() {
       <div class="field"><label class="label">Whisper model (subtitles and transcripts)</label><div class="select-wrap"><select class="select" data-set="subtitles_model"><option value=""${s.subtitles_model ? '' : ' selected'}>Best one downloaded</option>${st.models.filter((m) => m.kind === 'subtitles').map((m) => `<option value="${m.key}"${m.key === s.subtitles_model ? ' selected' : ''}${m.installed ? '' : ' disabled'}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('')}</select>${icon('chevron')}</div></div>
       <div class="pair"><div class="field"><label class="label">Loudness (LUFS)</label><input class="input mono" type="number" step="0.5" min="-30" max="-9" data-set="loudness" value="${s.loudness}"><p class="help">−16 suits voiceovers; YouTube plays at about −14.</p></div>
         <div class="field"><label class="label">MP3 quality (kbps)</label><div class="select-wrap"><select class="select" data-set="mp3_bitrate">${[96, 128, 160].map((k) => `<option${k === s.mp3_bitrate ? ' selected' : ''}>${k}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
+      <div class="pair"><div class="field"><label class="label">Speed</label><div class="select-wrap"><select class="select" data-set="speed">${[0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.15, 1.2].map((v) => `<option value="${v}"${Math.abs(v - (s.speed || 1)) < 0.001 ? ' selected' : ''}>${v}×${v === 1 ? ' natural' : ''}</option>`).join('')}</select>${icon('chevron')}</div></div>
+        <div class="field" style="justify-content:flex-end"><label class="switch" style="height:42px"><input type="checkbox" data-set="spell_numbers" ${s.spell_numbers ? 'checked' : ''}> Say numbers as words</label></div></div>
       <div class="pair"><div class="field"><label class="label">Pause between paragraphs (s)</label><input class="input mono" type="number" step="0.1" min="0" max="10" data-set="pause_paragraph" value="${s.pause_paragraph}"></div>
         <div class="field"><label class="label">Pause inside a paragraph (s)</label><input class="input mono" type="number" step="0.05" min="0" max="5" data-set="pause_segment" value="${s.pause_segment}"></div></div>
       <div class="field"><label class="label">Longest part (characters)</label><input class="input mono" type="number" step="50" min="150" max="1200" data-set="max_chars" value="${s.max_chars}"><p class="help">Text is spoken in parts of up to this length (about ${Math.round(s.max_chars / 14)} s). Shorter parts are quicker to redo; longer ones flow more.</p></div>
@@ -1089,6 +1140,222 @@ $('settings-body').addEventListener('click', run(async (e) => {
     }
     $('settings-body')._html = ''; loadSettings();
   }
+}));
+
+// ---------- channel presets (Create) ----------
+S.presets = [];
+async function loadPresets() {
+  try { S.presets = await api('/api/presets'); } catch { return; }
+  const keep = $('preset').value;
+  $('preset').innerHTML = '<option value="">No preset</option>' + S.presets.map((p) => `<option value="${esc(p.id)}"${p.id === keep ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  $('preset-delete').hidden = !$('preset').value;
+}
+function applyPreset(p) {
+  const s = p.settings;
+  if (s.voice) $('voice').value = s.voice;
+  if (s.language) { $('language').value = s.language; $('language').dataset.touched = '1'; }
+  if (s.model) $('model').value = s.model;
+  if (s.speed != null) { setSelect($('speed'), s.speed); $('speed').dataset.touched = '1'; }
+  if (s.loudness != null) { setSelect($('loudness'), s.loudness); $('loudness').dataset.touched = '1'; }
+  if (s.formats) { $('fmt-wav').checked = s.formats.includes('wav'); $('fmt-mp3').checked = s.formats.includes('mp3'); $('fmt-wav').dataset.touched = '1'; }
+  if (s.subtitles != null) { $('opt-srt').checked = s.subtitles; $('opt-srt').dataset.touched = '1'; }
+  if (s.pause_paragraph != null) $('pause-paragraph').value = s.pause_paragraph;
+  if (s.spell_numbers != null) { $('opt-numbers').checked = s.spell_numbers; $('opt-numbers').dataset.touched = '1'; }
+  fillCreateSelects(); updateSummary();
+}
+$('preset').addEventListener('change', () => {
+  const p = S.presets.find((x) => x.id === $('preset').value);
+  $('preset-delete').hidden = !p;
+  if (p) { applyPreset(p); toast(`Preset “${p.name}” applied.`, true); }
+});
+$('preset-save').addEventListener('click', run(async () => {
+  const cur = S.presets.find((x) => x.id === $('preset').value);
+  const r = await editDialog({ title: cur ? `Update “${cur.name}”` : 'Save as a preset', nameLabel: 'Preset name',
+    name: cur?.name || '', help: 'Saves the voice, language, model, speed, loudness, pauses, files and the numbers option. Same name = update it.', ok: 'Save' });
+  if (!r || !r.name.trim()) return;
+  const { voice, language, model, speed, loudness, formats, subtitles, pause_paragraph, spell_numbers } = createSettings();
+  const p = await api('/api/presets', { method: 'POST', json: { name: r.name.trim(), settings: { voice, language, model, speed, loudness, formats, subtitles, pause_paragraph, spell_numbers } } });
+  await loadPresets(); $('preset').value = p.id; $('preset-delete').hidden = false;
+  toast(`Saved preset “${p.name}”.`, true);
+}));
+$('preset-delete').addEventListener('click', run(async () => {
+  const p = S.presets.find((x) => x.id === $('preset').value); if (!p) return;
+  if (!await confirmDialog(`Delete preset “${p.name}”?`, 'Only the preset is deleted; voices and batches are untouched.')) return;
+  await api(`/api/presets/${p.id}`, { method: 'DELETE' });
+  $('preset').value = ''; await loadPresets();
+}));
+
+// "See what the voice will read"
+$('read-preview').addEventListener('click', run(async () => {
+  const text = S.cmode === 'single' ? $('single-text').value : (S.scripts.find((s) => s.text.trim())?.text || '');
+  if (!text.trim()) throw new Error('Type some text first.');
+  const r = await api('/api/speakable', { method: 'POST', json: { text, language: $('language').value, spell_numbers: $('opt-numbers').checked } });
+  await editDialog({ title: 'What the voice will read', text: r.text, rows: 12, ok: 'Close',
+    help: (r.numbers_supported ? '' : 'Numbers stay as digits in this language (the voice reads them itself). ')
+      + 'Your script and subtitles keep the original spelling. Fix a word on the Pronunciation page.' });
+}));
+
+// ---------- batch output (speed, loudness, files) ----------
+async function editOutput(scriptN) {
+  const one = scriptN != null ? S.detail.scripts.find((x) => x.n === scriptN) : null;
+  const s = one ? one.out : S.detail.settings;
+  const speeds = [0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.15, 1.2];
+  const r = await editDialog({
+    title: 'Output', help: 'Finished scripts are rebuilt with these settings in a few seconds each; nothing is spoken again.',
+    extra: `<div class="pair"><div class="field"><label class="label">Speed</label><div class="select-wrap"><select class="select" name="speed">${speeds.map((v) => `<option value="${v}"${Math.abs(v - (s.speed || 1)) < 0.001 ? ' selected' : ''}>${v}×</option>`).join('')}</select>${icon('chevron')}</div></div>
+      <div class="field"><label class="label">Loudness (LUFS)</label><input class="input mono" type="number" step="0.5" min="-30" max="-9" name="loudness" value="${s.loudness ?? -16}"></div></div>
+      <div class="checks"><label><input type="checkbox" name="wav" ${(s.formats || []).includes('wav') ? 'checked' : ''}> WAV</label>
+        <label><input type="checkbox" name="mp3" ${(s.formats || []).includes('mp3') ? 'checked' : ''}> MP3</label>
+        <label><input type="checkbox" name="subtitles" ${s.subtitles !== false ? 'checked' : ''}> Subtitles (SRT)</label></div>`,
+    ok: 'Rebuild files',
+  });
+  if (!r) return;
+  const formats = [r.wav && 'wav', r.mp3 && 'mp3'].filter(Boolean);
+  S.detail = await api(`/api/batches/${S.detail.id}/settings${one ? `?script=${one.n}` : ''}`, { method: 'PATCH',
+    json: { speed: Number(r.speed), loudness: Number(r.loudness), formats, subtitles: r.subtitles } });
+  $('b-scripts')._html = ''; renderDetail(); toast('Rebuilding the files…', true);
+}
+
+// ---------- voice separator availability (Voices) ----------
+function separateHelp() {
+  const ready = S.state?.models.find((m) => m.key === 'uvr-vocals')?.installed;
+  $('voice-separate').disabled = !ready;
+  if (!ready) $('voice-separate').checked = false;
+  $('voice-separate-help').innerHTML = ready
+    ? 'For clips from videos, songs or anything with music under the voice. A long file is cut to its best minute first.'
+    : 'Needs the voice separator (67 MB): <a href="#models">Models → Voice separator</a>.';
+}
+
+// ---------- PRONUNCIATION ----------
+async function loadWords() {
+  S.words = await api('/api/dictionary');
+  const lang = S.state?.default_language || 'en';
+  if (!$('w-lang').options.length) {
+    $('w-lang').innerHTML = `<option value="">Every language</option>${languageOptions(lang)}`;
+    $('w-test-lang').innerHTML = languageOptions(lang);
+  }
+  renderWords();
+}
+function renderWords() {
+  const q = $('w-search').value.trim().toLowerCase();
+  const rows = S.words.filter((w) => !q || w.from.toLowerCase().includes(q) || w.to.toLowerCase().includes(q));
+  $('w-table').innerHTML = `<tr><th>Written</th><th>Said as</th><th>Language</th><th>Capitals</th><th></th></tr>` + (rows.length ? rows.map((w) => `
+    <tr data-id="${w.id}"><td class="mono">${esc(w.from)}</td><td>${esc(w.to)}</td><td>${w.language ? esc(langName(w.language)) : 'Every language'}</td>
+      <td>${w.case ? 'exactly' : 'any'}</td>
+      <td style="text-align:right;white-space:nowrap"><button class="btn xs" data-w="hear">${icon('speaker')} Hear</button>
+        <button class="btn xs" data-w="edit">${icon('pencil')} Edit</button><button class="icon-btn" data-w="delete" aria-label="Delete">${icon('trash')}</button></td></tr>`).join('')
+    : '<tr><td colspan="5" class="help" style="padding:16px 10px">No words yet.</td></tr>');
+}
+$('w-search').addEventListener('input', renderWords);
+$('w-add').addEventListener('click', run(async () => {
+  await api('/api/dictionary', { method: 'POST', json: { written: $('w-from').value, said: $('w-to').value, language: $('w-lang').value, case: $('w-case').checked } });
+  toast(`Added “${$('w-from').value.trim()}”.`, true);
+  $('w-from').value = ''; $('w-to').value = ''; $('w-case').checked = false;
+  await loadWords(); updateWordTest();
+}));
+async function hearText(text, lang, btn) {
+  const voice = S.settings?.default_voice || S.voices[0]?.id;
+  if (!voice) throw new Error('Add a voice first (Voices page).');
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = `${icon('speaker')} Speaking…`;
+  try {
+    const r = await api(`/api/voices/${encodeURIComponent(voice)}/preview`, { method: 'POST', json: { text, language: lang }, raw: true });
+    new Audio(URL.createObjectURL(await r.blob())).play();
+  } finally { btn.disabled = false; btn.innerHTML = old; }
+}
+$('w-hear').addEventListener('click', run(async (e) => {
+  const said = $('w-to').value.trim() || $('w-from').value.trim();
+  if (!said) throw new Error('Type the word first.');
+  await hearText(said, $('w-lang').value || S.state.default_language, e.currentTarget);
+}));
+$('w-table').addEventListener('click', run(async (e) => {
+  const b = e.target.closest('[data-w]'); if (!b) return;
+  const w = S.words.find((x) => x.id === b.closest('tr').dataset.id);
+  if (b.dataset.w === 'hear') return hearText(w.to, w.language || S.state.default_language, b);
+  if (b.dataset.w === 'delete') { await api(`/api/dictionary/${w.id}`, { method: 'DELETE' }); return loadWords(); }
+  const r = await editDialog({ title: `Edit “${w.from}”`, name: w.from, nameLabel: 'Written', ok: 'Save',
+    extra: `<div class="field"><label class="label">Said as</label><input class="input" name="said" value="${esc(w.to)}"></div>
+      <div class="pair"><div class="field"><label class="label">Language</label><div class="select-wrap"><select class="select" name="language"><option value="">Every language</option>${languageOptions(w.language)}</select>${icon('chevron')}</div></div>
+      <div class="field" style="justify-content:flex-end"><label class="check" style="height:42px"><input type="checkbox" name="case" ${w.case ? 'checked' : ''}> Only with these capitals</label></div></div>` });
+  if (!r) return;
+  await api(`/api/dictionary/${w.id}`, { method: 'PATCH', json: { written: r.name, said: r.said, language: r.language, case: r.case } });
+  loadWords();
+}));
+let wordTimer;
+function updateWordTest() {
+  clearTimeout(wordTimer);
+  wordTimer = setTimeout(run(async () => {
+    const text = $('w-test').value;
+    if (!text.trim()) { $('w-test-out').textContent = 'What the voice reads appears here.'; return; }
+    const r = await api('/api/speakable', { method: 'POST', json: { text, language: $('w-test-lang').value, spell_numbers: $('w-test-num').checked } });
+    $('w-test-out').textContent = r.text + (r.numbers_supported ? '' : '  (numbers stay as digits in this language)');
+  }), 250);
+}
+['w-test', 'w-test-lang', 'w-test-num'].forEach((id) => $(id).addEventListener(id === 'w-test' ? 'input' : 'change', updateWordTest));
+
+// ---------- TRANSCRIBE ----------
+S.tFile = null;
+async function loadTranscribe() {
+  const st = S.state;
+  if (!$('t-lang').options.length) $('t-lang').innerHTML = `<option value="">Detect automatically</option>${languageOptions('')}`;
+  const keepModel = $('t-model').value;
+  const subs = st.models.filter((m) => m.kind === 'subtitles');
+  $('t-model').innerHTML = `<option value="">The one in use</option>` + subs.map((m) => `<option value="${m.key}"${m.key === keepModel ? ' selected' : ''}${m.installed ? '' : ' disabled'}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('');
+  const tools = await api('/api/tools');
+  const ff = tools.find((t) => t.key === 'ffmpeg');
+  $('t-help').innerHTML = !st.subtitles_ready ? 'Download a Whisper model first: <a href="#models">Models</a>.'
+    : ff?.ready ? 'Small is quick; Medium and Large are more accurate for other people\'s audio. You can leave this page; it carries on.'
+    : 'Audio files work now. For video files, get ffmpeg on the <a href="#models">Models page</a> (Tools).';
+  $('t-go').disabled = !(S.tFile && st.subtitles_ready);
+  renderTranscripts();
+}
+async function renderTranscripts() {
+  let list;
+  try { list = await api('/api/transcripts'); } catch { return; }
+  const html = list.length ? list.map((t) => {
+    const busy = ['queued', 'converting', 'running'].includes(t.status);
+    const state = t.status === 'converting' ? 'Reading the file…' : t.status === 'running' ? `Transcribing… ${t.progress}%` : t.status === 'queued' ? 'Waiting' : '';
+    return `<div class="card bcard" data-id="${t.id}"><div class="main">
+        <div class="row" style="gap:10px;min-width:0">${busy ? (t.status === 'queued' ? chip('queued') : '<span class="chip accent live">Transcribing</span>') : chip(t.status)}<span class="name">${esc(t.name)}</span></div>
+        <div class="meta"><span>${fmtWhen(t.created)}</span>${t.seconds ? `<span>${fmtClock(t.seconds)} long</span>` : ''}
+          ${t.words ? `<span>${t.words.toLocaleString()} words</span>` : ''}${t.detected_language ? `<span>${esc(langName(t.detected_language))}</span>` : ''}
+          ${t.translate ? '<span>translated to English</span>' : ''}${t.took ? `<span>took ${fmtDur(t.took)}</span>` : ''}<span>${esc((S.state.models.find((m) => m.key === t.model) || {}).label || t.model || '')}</span></div>
+        ${busy ? `<div class="progress live" style="margin-top:6px"><div style="width:${Math.max(4, t.progress)}%"></div></div><span class="micro">${state}</span>` : ''}
+        ${t.error ? `<div class="err-note">${esc(t.error)}</div>` : ''}
+      </div><div class="acts">
+        ${t.status === 'done' ? `<button class="btn sm" data-tr="view">${icon('text')} Read</button>${Object.keys(t.files).filter((k) => k !== 'json').map((k) => `<a class="btn sm" href="/api/transcripts/${t.id}/${k}?download=1">${icon('download')} ${k.toUpperCase()}</a>`).join('')}` : ''}
+        <button class="icon-btn" data-tr="delete" aria-label="Delete">${icon('trash')}</button></div></div>`;
+  }).join('') : '<div class="card empty">No transcripts yet.</div>';
+  setHtml($('t-list'), html);
+  if (list.some((t) => ['queued', 'converting', 'running'].includes(t.status)) && S.view === 'transcribe') setTimeout(renderTranscripts, 1000);
+}
+function setTFile(f) {
+  S.tFile = f;
+  $('t-drop-text').innerHTML = f ? `<b>${esc(f.name)}</b><br><small>${fmtSize(f.size)} · click to choose another</small>` : 'Drop a video or audio file here, or click to choose';
+  $('t-go').disabled = !(f && S.state?.subtitles_ready);
+}
+$('t-file').addEventListener('change', (e) => setTFile(e.target.files[0] || null));
+const tdrop = $('t-drop');
+['dragenter', 'dragover'].forEach((ev) => tdrop.addEventListener(ev, (e) => { e.preventDefault(); tdrop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((ev) => tdrop.addEventListener(ev, () => tdrop.classList.remove('over')));
+tdrop.addEventListener('drop', (e) => { e.preventDefault(); if (e.dataTransfer.files[0]) setTFile(e.dataTransfer.files[0]); });
+$('t-go').addEventListener('click', run(async () => {
+  const form = new FormData();
+  form.append('file', S.tFile); form.append('language', $('t-lang').value); form.append('model', $('t-model').value);
+  form.append('translate', $('t-translate').checked ? '1' : '0');
+  $('t-go').disabled = true; $('t-go').textContent = 'Uploading…';
+  try { await api('/api/transcripts', { method: 'POST', form }); setTFile(null); $('t-file').value = ''; }
+  finally { $('t-go').textContent = 'Transcribe'; }
+  $('t-list')._html = ''; renderTranscripts();
+}));
+$('t-list').addEventListener('click', run(async (e) => {
+  const b = e.target.closest('[data-tr]'); if (!b) return;
+  const id = b.closest('.bcard').dataset.id;
+  if (b.dataset.tr === 'delete') {
+    if (!await confirmDialog('Delete this transcript?', 'Its text and subtitle files go to the Recycle Bin.')) return;
+    await api(`/api/transcripts/${id}`, { method: 'DELETE' }); $('t-list')._html = ''; return renderTranscripts();
+  }
+  const text = await (await fetch(`/api/transcripts/${id}/txt`)).text();
+  await editDialog({ title: 'Transcript', text, rows: 18, ok: 'Close', help: 'Select and copy what you need, or download the TXT / SRT / VTT.' });
 }));
 
 // ---------- start ----------

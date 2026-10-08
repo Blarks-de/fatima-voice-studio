@@ -110,6 +110,49 @@ def stitch(parts: list[tuple[np.ndarray, float]], sr: int) -> tuple[np.ndarray, 
     return np.concatenate(out), spans
 
 
+# ---- speed (WSOLA time-stretch: faster or slower, same pitch) -------------------
+
+def time_stretch(audio: np.ndarray, sr: int, rate: float) -> np.ndarray:
+    """Speed speech up (rate > 1) or slow it down (rate < 1) without changing the voice's pitch.
+    WSOLA: overlap-add short windows taken from the input at the new pace, each one nudged (within a few ms)
+    to where it best continues the previous window, so the waveform stays smooth."""
+    if abs(rate - 1.0) < 0.005 or len(audio) < sr // 10:
+        return audio
+    n = int(0.030 * sr) // 2 * 2         # 30 ms windows
+    hs = n // 2                          # output hop (50% overlap)
+    ha = hs * rate                       # input hop
+    tol = int(0.008 * sr)                # how far a window may be nudged
+    win = np.hanning(n).astype(np.float32)
+    pad = tol + n
+    x = np.concatenate([np.zeros(pad, np.float32), audio.astype(np.float32), np.zeros(pad + n, np.float32)])
+    frames = int((len(audio) / rate) / hs) + 1
+    out = np.zeros(frames * hs + n, dtype=np.float32)
+    norm = np.zeros_like(out)
+    nfft = 1 << int(np.ceil(np.log2(n + 2 * tol + n)))
+    prev = pad
+    for k in range(frames):
+        ideal = int(pad + k * ha)
+        if k == 0:
+            pos = ideal
+        else:
+            natural = x[prev + hs: prev + hs + n]
+            lo = max(0, ideal - tol)
+            region = x[lo: lo + n + 2 * tol]
+            if len(region) < n + 2 * tol or not natural.any():
+                pos = ideal
+            else:
+                corr = np.fft.irfft(np.fft.rfft(region, nfft) * np.conj(np.fft.rfft(natural, nfft)), nfft)[: 2 * tol + 1]
+                pos = lo + int(np.argmax(corr))
+        seg = x[pos: pos + n]
+        if len(seg) < n:
+            break
+        out[k * hs: k * hs + n] += seg * win
+        norm[k * hs: k * hs + n] += win
+        prev = pos
+    out = out / np.maximum(norm, 1e-3)
+    return out[: int(round(len(audio) / rate))].astype(np.float32)
+
+
 # ---- loudness (ITU-R BS.1770-4) ----------------------------------------------
 
 def _k_weighting_power(freqs: np.ndarray, sr: int) -> np.ndarray:

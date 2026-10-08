@@ -17,6 +17,7 @@ import numpy as np
 
 from . import audio, config, subtitles, text as textmod
 from .engine import Cancelled, Engine, EngineError
+from .speech_text import Dictionary, speakable
 from .store import Store, items_of, script_of, settings_for
 from .voices import Voices
 
@@ -40,8 +41,9 @@ def length_problem(text: str, seconds: float) -> str | None:
 
 
 class Worker:
-    def __init__(self, store: Store, engine: Engine, voices: Voices, cfg: dict):
+    def __init__(self, store: Store, engine: Engine, voices: Voices, cfg: dict, dictionary: Dictionary | None = None):
         self.store, self.engine, self.voices, self.cfg = store, engine, voices, cfg
+        self.dictionary = dictionary
         self.current: tuple[dict, dict] | None = None  # (batch, item) being spoken
         self.finishing: tuple[dict, dict] | None = None  # (batch, script) being finished
         self.api_busy = False
@@ -94,6 +96,11 @@ class Worker:
             else:
                 await self._wake.wait()
 
+    def spoken_text(self, text: str, s: dict) -> str:
+        """What the engine reads: the pronunciation dictionary applied and numbers spelled out (the script stays as written)."""
+        return speakable(text, s.get("language") or self.cfg["default_language"], self.dictionary,
+                         numbers=s.get("spell_numbers", self.cfg.get("spell_numbers", True)))
+
     def voice_clip(self, ref: str | None) -> Path | None:
         if not ref:
             return None
@@ -112,7 +119,12 @@ class Worker:
         out = self.store.folder(b) / it["file"]
         try:
             voice = self.voice_clip(s.get("voice"))
-            speak = lambda seed: self.engine.speak(s["model"], it["text"], language=s["language"], voice=voice,
+            spoken = self.spoken_text(it["text"], s)
+            if spoken != it["text"]:
+                it["spoken"] = spoken  # shown under the part: "Read as …"
+            else:
+                it.pop("spoken", None)
+            speak = lambda seed: self.engine.speak(s["model"], spoken, language=s["language"], voice=voice,
                                                    seed=seed, out=out)
             try:
                 await speak(it["seed"])
@@ -122,12 +134,12 @@ class Worker:
                 log.warning("Retrying %s/%s after: %s", b["name"], it["id"], e)  # a crash or a passing GPU hiccup
                 await speak(it["seed"])
             seconds = audio.duration(out)
-            if problem := length_problem(it["text"], seconds):
+            if problem := length_problem(spoken, seconds):
                 log.info("Segment %s/%s came out %.1fs (%s); re-rolling once", b["name"], it["id"], seconds, problem)
                 it["seed"] += RETRY_SEED
                 await speak(it["seed"])
                 seconds = audio.duration(out)
-                problem = length_problem(it["text"], seconds)
+                problem = length_problem(spoken, seconds)
                 it["check"] = f"This part came out {problem}. Listen to it and regenerate if needed." if problem else None
             it.update(status="done", audio_s=round(seconds, 2))
             if all(x["status"] == "done" for x in items_of(b, script)):
@@ -187,10 +199,11 @@ class Worker:
         s = settings_for(b, script)
         folder = self.store.folder(b)
         items = items_of(b, script)
+        speed = max(config.SPEED_RANGE[0], min(config.SPEED_RANGE[1], float(s.get("speed") or 1.0)))
         parts = []
         for it in items:
             a, sr = audio.load(folder / it["file"])
-            parts.append((a, it["pause_after"]))
+            parts.append((audio.time_stretch(a, sr, speed), it["pause_after"]))  # the parts keep their natural pace
         track, spans = audio.stitch(parts, sr)
         track, before = audio.normalize(track, sr, float(s.get("loudness", -16.0)))
         formats = s.get("formats") or ["wav", "mp3"]
@@ -244,7 +257,8 @@ class Worker:
         checks = {}
         for it, (start, end) in zip(items, spans):
             words = [w for w in heard if w[1] >= start - 0.3 and w[2] <= end + 0.3]
-            rate = subtitles.match_rate(it["text"], words)
+            # Whisper may write what it hears as digits ("1913") or as words ("ce jota ene ge"): take the better match.
+            rate = max(subtitles.match_rate(it["text"], words), subtitles.match_rate(it.get("spoken") or it["text"], words))
             n = len(textmod.PAUSE_TAG.sub(" ", it["text"]).split())
             if n >= 4 and rate < 0.7:
                 checks[it["id"]] = (f"Whisper only recognised {rate:.0%} of the words here: part of it may be skipped "
@@ -258,9 +272,13 @@ class Worker:
     # ---- API / previews --------------------------------------------------------------
 
     async def speech(self, text: str, *, voice: str | None, language: str, model: str, seed: int | None = None,
-                     loudness: float | None = -16.0) -> tuple[np.ndarray, int]:
+                     loudness: float | None = -16.0, speed: float = 1.0, spell_numbers: bool | None = None) -> tuple[np.ndarray, int]:
         """Speak any length of text right now (ahead of batches) and return the audio. For the API and previews."""
         parts = textmod.split(text, **{k: self.cfg[k] for k in ("max_chars", "pause_segment", "pause_paragraph")})
+        numbers = self.cfg.get("spell_numbers", True) if spell_numbers is None else spell_numbers
+        for p in parts:
+            p["text"] = self.spoken_text(p["text"], {"language": language, "spell_numbers": numbers})
+        speed = max(config.SPEED_RANGE[0], min(config.SPEED_RANGE[1], float(speed or 1.0)))
         if not parts:
             raise ValueError("There's no text to speak.")
         seed = random.randint(0, 2**31 - 10**6) if seed is None else int(seed)
@@ -276,7 +294,7 @@ class Worker:
                     files.append(f)
                     await self.engine.speak(model, p["text"], language=language, voice=clip, seed=seed + k, out=f)
                     a, sr = audio.load(f)
-                    loaded.append((a, p["pause_after"]))
+                    loaded.append((audio.time_stretch(a, sr, speed), p["pause_after"]))
             finally:
                 for f in files:
                     f.unlink(missing_ok=True)

@@ -211,22 +211,49 @@ def build(base: str, api_key, *, host_port: int | None = None) -> FastMCP:
 
     # ---- making speech ----------------------------------------------------------------
 
-    def batch_settings(voice, language, model, seed, loudness, formats, subtitles) -> dict:
+    def batch_settings(voice, language, model, seed, loudness, formats, subtitles, speed=None, preset=None) -> dict:
         s = {}
         for k, v in (("voice", voice), ("language", language), ("model", model), ("seed", seed),
-                     ("loudness", loudness), ("formats", formats), ("subtitles", subtitles)):
+                     ("loudness", loudness), ("formats", formats), ("subtitles", subtitles), ("speed", speed),
+                     ("preset", preset)):
             if v is not None:
                 s[k] = v
         return s
 
     @mcp.tool()
+    async def list_presets() -> list[dict]:
+        """Channel presets (voice, language, speed, loudness, pauses, files saved under a name). Pass preset=<name>
+        to speak or create_batch to use one."""
+        return [{"name": p["name"], "settings": p["settings"]} for p in await studio.call("GET", "/api/presets")]
+
+    @mcp.tool()
+    async def list_pronunciations(language: str | None = None) -> list[dict]:
+        """The pronunciation dictionary: how names and abbreviations are said (applied to every script)."""
+        return [{"written": e["from"], "said_as": e["to"], "language": e["language"] or "all", "exact_capitals": e["case"]}
+                for e in await studio.call("GET", "/api/dictionary") if not language or e["language"] in ("", language)]
+
+    @mcp.tool()
+    async def add_pronunciation(written: str, said_as: str, language: str = "", exact_capitals: bool = False) -> dict:
+        """Teach the voice how to say a name or abbreviation, spelled the way it sounds in that language
+        (e.g. written "CJNG", said_as "ce jota ene ge", language "es"). Applies to new and regenerated parts."""
+        e = await studio.call("POST", "/api/dictionary", json={"written": written, "said": said_as, "language": language,
+                                                               "case": exact_capitals})
+        return {"added": e["from"], "said_as": e["to"], "language": e["language"] or "all"}
+
+    @mcp.tool()
+    async def preview_reading(text: str, language: str | None = None) -> dict:
+        """What the voice will actually read for some text (pronunciation dictionary + numbers as words), without speaking."""
+        return await studio.call("POST", "/api/speakable", json={"text": text, "language": language})
+
+    @mcp.tool()
     async def speak(text: str, voice: str | None = None, language: str | None = None, seed: int | None = None,
-                    wait: bool = True) -> dict:
-        """Speak one piece of text now (ahead of queued batches), saved in today's Singles batch.
-        Returns the file paths (WAV/MP3/SRT) when wait=true (up to 15 minutes), else the batch to wait on."""
+                    speed: float | None = None, preset: str | None = None, wait: bool = True) -> dict:
+        """Speak one piece of text now (ahead of queued batches), saved in today's Singles batch. speed 0.8-1.25
+        (same pitch). preset = a channel preset's name. Returns the file paths (WAV/MP3/SRT) when wait=true
+        (up to 15 minutes), else the batch to wait on."""
         voice_id = await studio.voice(voice) if voice else None
         r = await studio.call("POST", "/api/singles", json={"text": text, "settings": batch_settings(
-            voice_id, language, None, seed, None, None, None)})
+            voice_id, language, None, seed, None, None, None, speed, preset)})
         bid, n = r["batch"]["id"], r["script"]["n"]
         if not wait:
             return {"batch": r["batch"]["name"], "script": n, "status": "queued", "note": "Use wait_for_batch."}
@@ -242,10 +269,11 @@ def build(base: str, api_key, *, host_port: int | None = None) -> FastMCP:
     async def create_batch(scripts: list, name: str | None = None, voice: str | None = None,
                            language: str | None = None, model: str | None = None, seed: int | None = None,
                            loudness: float | None = None, formats: list[str] | None = None,
-                           subtitles: bool | None = None) -> dict:
+                           subtitles: bool | None = None, speed: float | None = None, preset: str | None = None) -> dict:
         """Queue a batch: each script becomes its own WAV/MP3 (+ SRT). scripts: a list of texts, or of
         {"text" | "file", "title", "voice", "language"} where "file" is a .txt/.md path in an allowed folder.
-        voice/language apply to scripts without their own. loudness in LUFS (-16 default; -14 louder).
+        voice/language apply to scripts without their own. preset = a channel preset's name (its settings fill
+        in anything not given here). loudness in LUFS (-16 default; -14 louder). speed 0.8-1.25 (same pitch).
         formats: ["wav", "mp3"]. Returns the batch id and name; use wait_for_batch next."""
         out = []
         for s in scripts:
@@ -258,7 +286,7 @@ def build(base: str, api_key, *, host_port: int | None = None) -> FastMCP:
                 s["voice"] = await studio.voice(s["voice"])
             out.append({k: s[k] for k in ("text", "title", "voice", "language") if s.get(k)})
         settings = batch_settings(await studio.voice(voice) if voice else None, language, await studio.model(model),
-                                  seed, loudness, formats, subtitles)
+                                  seed, loudness, formats, subtitles, speed, preset)
         b = await studio.call("POST", "/api/batches", json={"name": name, "scripts": out, "settings": settings})
         return {"id": b["id"], "name": b["name"], "scripts": b["scripts_total"], "parts": b["total"], "folder": b["folder"],
                 "note": "Use wait_for_batch to wait for it."}
@@ -353,15 +381,40 @@ def build(base: str, api_key, *, host_port: int | None = None) -> FastMCP:
         return await studio.call("POST", f"/api/exports/{b['id']}", json={"format": format, "content": content})
 
     @mcp.tool()
-    async def transcribe(source: str, language: str | None = None) -> dict:
-        """Transcribe an audio file (absolute path in an allowed folder, or a link) with Whisper. Returns the text."""
-        data, filename = await studio.read_file(source)
-        async with studio.client(1800) as c:
-            r = await c.post("/v1/audio/transcriptions", data={"response_format": "verbose_json", **({"language": language} if language else {})},
-                             files={"file": (filename, data)})
+    async def transcribe(source: str, language: str | None = None, translate_to_english: bool = False,
+                         timeout_seconds: int = 1800) -> dict:
+        """Transcribe an audio or video file (absolute path in an allowed folder, or a link) with Whisper.
+        Returns the text and the paths of the TXT / SRT / VTT files (kept on the Transcribe page)."""
+        data, filename = await studio.read_file(source) if re.match(r"^https?://", source) else (None, None)
+        if data is None:
+            path = Path(source).expanduser().resolve()
+            s = await studio.settings()
+            allowed = [Path(d) for d in [*s.get("agent_read_dirs", []), s["batches_dir"], s["exports_dir"]]]
+            if not any(path == a.resolve() or a.resolve() in path.parents for a in allowed):
+                raise ValueError(f"{path} isn't in a folder agents may read (Connect page).")
+            if not path.is_file():
+                raise ValueError(f"No file at {path}.")
+            data, filename = path.read_bytes(), path.name  # videos can be large: no 50 MB limit here
+        form = {"translate": "1" if translate_to_english else "0", **({"language": language} if language else {})}
+        async with studio.client(300) as c:
+            r = await c.post("/api/transcripts", data=form, files={"file": (filename, data)})
         if r.status_code >= 400:
             raise ValueError(r.json().get("detail"))
-        j = r.json()
-        return {"text": j["text"], "language": j.get("language"), "seconds": round(j.get("duration") or 0, 1)}
+        tid = r.json()["id"]
+        deadline = asyncio.get_running_loop().time() + min(max(timeout_seconds, 10), 3600)
+        while True:
+            t = next((x for x in await studio.call("GET", "/api/transcripts") if x["id"] == tid), None)
+            if not t:
+                raise ValueError("The transcript was deleted.")
+            if t["status"] in ("done", "failed") or asyncio.get_running_loop().time() > deadline:
+                break
+            await asyncio.sleep(3)
+        if t["status"] != "done":
+            return {"status": t["status"], "progress": t["progress"], "error": t.get("error"),
+                    "note": "Still running: check the Transcribe page, or call transcribe again later."}
+        text = (await studio.call("GET", f"/api/transcripts/{tid}/txt")).decode("utf-8")
+        folder = Path((await studio.settings())["data_dir"]) / "transcripts" / tid
+        return {"text": text, "language": t.get("detected_language"), "seconds": t.get("seconds"),
+                "files": {k: str(folder / f) for k, f in t["files"].items()}}
 
     return mcp
