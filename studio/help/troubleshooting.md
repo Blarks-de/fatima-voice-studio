@@ -156,7 +156,7 @@ Nothing is lost: the batch carries on where it left off when the app starts agai
 
 ### No update appears, but there's a new version on GitHub
 
-Click **Check now** under **Settings → Updates**. If you run the app from its source code (not installed), updates
+Click **Check now** under **About → Updates** (About is in the menu at the top right). If you run the app from its source code (not installed), updates
 come from git instead. You can always install a new version by running its installer from the
 [releases page](https://github.com/hassanxs/fatima-voice-studio/releases).
 

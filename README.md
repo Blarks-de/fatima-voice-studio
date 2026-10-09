@@ -47,7 +47,7 @@ The installer isn't code-signed yet, so Windows SmartScreen may say "Windows pro
 Actions from the tagged source.
 
 **Updates:** the installed app checks GitHub for a new release when it starts and every 6 hours, and shows it
-under **Settings → Updates**. *Quick update* replaces only the app's own files; *Full update* runs the new
+under **About → Updates**. *Quick update* replaces only the app's own files; *Full update* runs the new
 installer. Both check the download's SHA-256 and keep your voices, models, settings and audio.
 
 **Uninstall** from Windows Settings → Apps. It asks whether to also delete the downloaded models, engine and

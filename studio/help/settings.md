@@ -2,10 +2,10 @@
 
 Open the menu button at the top right (the sliders icon, next to **?**). Its menu has **Settings** (this page), **Pronunciation** (see
 [Pronunciation](pronunciation.md)), **Models** and **Setup** (see [Setup and models](setup-and-models.md)),
-**Connect** (see [Connect](connect.md)) and **About**: the version, the licences, and your PC's details to copy
+**Connect** (see [Connect](connect.md)) and **About**: the version and updates, the licences, and your PC's details to copy
 into a problem report.
 
-![The Settings page: defaults and speech on the left, files and folders in the middle, App and Updates on the right](images/settings.webp)
+![The Settings page: defaults and speech on the left, files and folders in the middle, App on the right](images/settings.webp)
 
 Every change on the Settings page is saved as soon as you make it.
 
@@ -62,6 +62,5 @@ See [Files and folders](files-and-folders.md).
 
 ## Updates
 
-Shows your version, and new versions when they're out: what's new, how big the download is, and the **Quick
-update** and **Full update** buttons. **Check now** checks right away; **Check automatically** checks when the app
-starts and every 6 hours. See [Updates and uninstalling](updates.md).
+Updates are on the **About** page now (menu at the top right): what's new, the **Quick update** and **Full
+update** buttons, **Check now** and **Check automatically**. See [Updates and uninstalling](updates.md).

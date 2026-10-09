@@ -442,15 +442,15 @@ async function pollState() {
   $('engine-dot').className = `state-dot ${dot}${ring ? ' ring' : ''}`;
   $('engine-dot').style.setProperty('--p', !ring ? 0 : st.current ? Math.min(99, Math.round(100 * eng.frames / eng.frames_expected)) : finPct);
   $('foot-right').innerHTML = `<a href="#about">v${esc(st.version)}</a> · ${esc(st.api_base)}`;
-  if (st.update?.status === 'available') $('foot-left').innerHTML = `Fatima Voice Studio · <a href="#settings">update ${esc(st.update.latest)} available</a>`;
+  if (st.update?.status === 'available') $('foot-left').innerHTML = `Fatima Voice Studio · <a href="#about">update ${esc(st.update.latest)} available</a>`;
   renderUpdateBadge();
 }
 
-// An update: a dot on the menu button (and on Settings in the menu), and a one-time message.
+// An update: a dot on the menu button (and on About in the menu), and a one-time message.
 let updToasted = null;
 function renderUpdateBadge() {
   const available = S.state?.update?.status === 'available';
-  for (const link of [$('menu-btn'), document.querySelector('#settings-menu a[href="#settings"]')]) {
+  for (const link of [$('menu-btn'), document.querySelector('#settings-menu a[href="#about"]')]) {
     let dot = link.querySelector('.badge');
     if (available && !dot) { dot = document.createElement('span'); dot.className = 'badge'; dot.title = 'Update available'; link.append(dot); }
     if (!available && dot) dot.remove();
@@ -458,7 +458,7 @@ function renderUpdateBadge() {
   const latest = S.state?.update?.latest;
   if (available && updToasted !== latest && !document.body.classList.contains('locked')) {
     updToasted = latest;
-    toast(`Version ${latest} is available — Settings → Updates`, true);
+    toast(`Version ${latest} is available — see About in the menu at the top right`, true);
   }
 }
 
@@ -1363,7 +1363,7 @@ document.addEventListener('click', run(async (e) => {
 
 // ---------- SETTINGS ----------
 async function loadSettings() {
-  const [settings, , upd] = await Promise.all([api('/api/settings'), loadVoicesList(), api('/api/update').catch(() => null)]);
+  const [settings] = await Promise.all([api('/api/settings'), loadVoicesList()]);
   S.settings = settings;
   const s = S.settings, st = S.state;
   const pathRow = (key, label, help) => `<div class="field"><label class="label">${label}</label><div class="path-row"><input class="input" data-set="${key}" value="${esc(s[key])}" title="${esc(s[key])}"><button class="btn sm" data-browse="${key}">Browse</button><button class="btn sm" data-open-folder="${key.replace('_dir', '')}" title="Open in File Explorer" aria-label="Open in File Explorer">${icon('folder')}</button></div>${help ? `<p class="help">${help}</p>` : ''}</div>`;
@@ -1407,11 +1407,10 @@ async function loadSettings() {
         <div class="field"><label class="label">API key</label><input class="input mono" data-set="api_key" value="${esc(s.api_key)}"></div></div>
       <div class="field"><label class="label">Hugging Face token <span class="opt">— optional</span></label><input class="input mono" type="password" data-set="hf_token" placeholder="${s.hf_token_set ? 'Set (type to replace, clear to remove)' : 'Not needed for the models here'}"></div>
     </section>
-    ${updatesPanel(s, upd)}
     </div></div>`;
   setHtml($('settings-body'), html);
 }
-// Settings → Updates: what's new in plain words, what each button does, and nothing from the download page.
+// About → Updates: what's new in plain words, what each button does, and nothing from the download page.
 function updatesPanel(s, upd) {
   const st = upd?.status;
   const checked = upd?.checked ? `Checked ${new Date(upd.checked * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : 'Not checked yet';
@@ -1444,8 +1443,7 @@ function updatesPanel(s, upd) {
   } else if (st === 'checking') {
     body = '<p class="help">Checking…</p>';
   }
-  return `<section class="card panel"><h2>Updates</h2>
-      <div class="kv"><span class="k">This version</span><span>${esc(s.version)}</span></div>
+  return `<section class="card panel" id="about-updates"><h2>Updates</h2>
       ${body}
       ${upd?.error ? `<p class="err-note">${esc(upd.error)}</p>` : ''}
       <div class="row wrap"><button class="btn sm" data-update="check">${icon('refresh')} Check now</button>
@@ -1472,16 +1470,6 @@ $('settings-body').addEventListener('click', run(async (e) => {
     const r = await api('/api/browse-folder', { method: 'POST', json: { start: S.settings[key] } });
     if (r.path) { S.settings = await api('/api/settings', { method: 'PUT', json: { [key]: r.path } }); $('settings-body')._html = ''; loadSettings(); toast('Saved.', true); }
     return;
-  }
-  const up = e.target.closest('[data-update]');
-  if (up) {
-    if (up.dataset.update === 'check') await api('/api/update/check', { method: 'POST' });
-    else {
-      if (!await confirmDialog('Install the update now?', 'The app closes, updates and starts again by itself. Your voices, models, settings and audio are kept.', 'Update')) return;
-      await api(`/api/update/${up.dataset.update}`, { method: 'POST' });
-      toast('Updating… the app restarts by itself.', true);
-    }
-    $('settings-body')._html = ''; loadSettings();
   }
 }));
 
@@ -1755,7 +1743,9 @@ $('t-list').addEventListener('click', run(async (e) => {
 // ---------- ABOUT ----------
 const PK_FLAG = '<svg class="flag" viewBox="0 0 30 20" role="img" aria-label="Pakistan"><rect width="30" height="20" fill="#01411c"/><rect width="7.5" height="20" fill="#fff"/><circle cx="18.6" cy="10.7" r="5.6" fill="#fff"/><circle cx="20.1" cy="9.4" r="5" fill="#01411c"/><polygon fill="#fff" points="23.62,5.12 23.17,6.70 24.50,7.67 22.85,7.73 22.34,9.30 21.77,7.75 20.13,7.75 21.42,6.73 20.92,5.16 22.28,6.08"/></svg>';  // drawn, because Windows shows flag emoji as letters
 async function loadAbout() {
-  const [a, setup] = await Promise.all([api('/api/about'), api('/api/setup').catch(() => null)]);
+  const [a, setup, settings, updFull] = await Promise.all([api('/api/about'), api('/api/setup').catch(() => null),
+    api('/api/settings'), api('/api/update').catch(() => null)]);
+  S.settings = settings;
   const st = S.state, upd = st.update || {};
   const gpu = setup?.hardware?.gpus?.filter((g) => !g.integrated).map((g) => `${g.name}${g.vram_gb ? ` (${g.vram_gb} GB)` : ''}`).join(', ');
   const hw = setup?.hardware;
@@ -1770,7 +1760,7 @@ async function loadAbout() {
     ['Python', a.python],
   ];
   S.aboutText = details.map(([k, v]) => `${k}: ${v}`).join('\n');
-  const status = upd.status === 'available' ? `<a class="chip accent" href="#settings" style="text-decoration:none">Version ${esc(upd.latest)} available</a>`
+  const status = upd.status === 'available' ? `<button type="button" class="chip accent" data-about="updates">Version ${esc(upd.latest)} available</button>`
     : upd.status === 'up_to_date' ? '<span class="chip ok">Up to date</span>' : '';
   const html = `
     <section class="card about-hero">
@@ -1787,6 +1777,7 @@ async function loadAbout() {
       </div>
     </section>
     <div class="about-grid">
+      ${updatesPanel({ ...settings, version: a.version, installed: a.installed }, updFull)}
       <section class="card panel"><h2>Models and licences</h2>
         <p class="help">Everything here can be used in monetized videos and client work, unless it's marked otherwise.</p>
         <div class="lic-list">${models.length ? models.map((m) => `<div class="lic-row"><span><b>${esc(m.label)}</b></span>
@@ -1811,9 +1802,23 @@ async function loadAbout() {
   setHtml($('about-body'), html);
 }
 $('about-body').addEventListener('click', run(async (e) => {
-  if (!e.target.closest('[data-about="copy"]')) return;
-  await copyText(S.aboutText);
-  toast('Copied. Paste it into your problem report.', true);
+  if (e.target.closest('[data-about="updates"]')) { $('about-updates')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+  if (e.target.closest('[data-about="copy"]')) { await copyText(S.aboutText); toast('Copied. Paste it into your problem report.', true); return; }
+  const up = e.target.closest('[data-update]');
+  if (up) {
+    if (up.dataset.update === 'check') await api('/api/update/check', { method: 'POST' });
+    else {
+      if (!await confirmDialog('Install the update now?', 'The app closes, updates and starts again by itself. Your voices, models, settings and audio are kept.', 'Update')) return;
+      await api(`/api/update/${up.dataset.update}`, { method: 'POST' });
+      toast('Updating… the app restarts by itself.', true);
+    }
+    $('about-body')._html = ''; loadAbout();
+  }
+}));
+$('about-body').addEventListener('change', run(async (e) => {
+  if (e.target.dataset.set !== 'check_updates') return;
+  S.settings = await api('/api/settings', { method: 'PUT', json: { check_updates: e.target.checked } });
+  toast('Saved.', true);
 }));
 
 // ---------- HELP ----------

@@ -71,7 +71,7 @@ class Tray:
             return
         self.cfg["update_notified"] = latest
         config.save(self.cfg)
-        self.icon.notify(f"Version {latest} is ready to install. Open {APP_NAME} → Settings → Updates "
+        self.icon.notify(f"Version {latest} is ready to install. Open {APP_NAME} → About "
                          "(your voices, models and audio are kept).", "Update available")
 
     def _notify_finished(self) -> None:

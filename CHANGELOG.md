@@ -3,6 +3,7 @@
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
 ## 0.2.6
+- Updates moved to the About page (menu at the top right), next to your version. The update dot and messages point there.
 - Fixed: a part could refuse to play ("no supported sources") after the batch page refreshed while a batch was running. Players now load again by themselves, and a part's audio only loads when you play it, so long batches open faster.
 
 ## 0.2.5

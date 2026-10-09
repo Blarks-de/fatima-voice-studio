@@ -381,7 +381,7 @@ select.mini { height: 26px; max-width: 150px; padding: 0 6px; border: 1px solid 
 .code .copy:hover { color: var(--lime); background: rgba(255,255,255,.08); }
 .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 14px; font-size: 13px; align-items: center; }
 .kv .k { font: 500 11px var(--mono); text-transform: uppercase; color: var(--muted); }
-/* Settings → Updates */
+/* About → Updates */
 .upd-new { border: 1px solid var(--line); border-radius: var(--r); background: var(--card); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .upd-head { display: flex; align-items: center; gap: 8px; font-size: 14px; }
 .upd-tag { font: 600 10px/1 var(--mono); text-transform: uppercase; background: var(--lime); color: var(--on-lime); border-radius: 3px; padding: 4px 6px; }
