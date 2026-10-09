@@ -1,0 +1,14 @@
+[Unit]
+Description=Fatima Voice Studio (local text-to-speech)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@EXEC@ --no-tray --no-browser
+Restart=on-failure
+RestartSec=5
+# Stops llama-tts too if the app is killed
+KillMode=control-group
+
+[Install]
+WantedBy=default.target
