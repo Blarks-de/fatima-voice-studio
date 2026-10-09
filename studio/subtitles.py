@@ -11,11 +11,12 @@ import logging
 import os
 import re
 import subprocess
+import threading
 import unicodedata
 import uuid
 from pathlib import Path
 
-from . import config, runtime, text as textmod
+from . import config, hardware, runtime, text as textmod
 
 log = logging.getLogger("studio.subtitles")
 
@@ -34,43 +35,92 @@ def _norm(word: str) -> str:
     return re.sub(r"[^\w']", "", w)
 
 
+PROGRESS = re.compile(r"progress\s*=\s*(\d+)%")  # whisper-cli -pp
+BELOW_NORMAL = 0x00004000  # Windows priority: Whisper never makes the rest of the PC wait
+
+
+def whisper_builds(cfg: dict) -> list[tuple[Path, bool]]:
+    """The whisper-cli builds to try, best first: (exe, on the GPU). The NVIDIA build when it's downloaded and an
+    NVIDIA card is present, then the CPU build, which is also the fallback if the GPU run fails."""
+    builds = []
+    gpu = config.tool_dir(config.WHISPER_GPU) / config.WHISPER_EXE
+    if gpu.exists() and hardware.has_nvidia():
+        builds.append((gpu, True))
+    cpu = config.whisper_dir() / config.WHISPER_EXE
+    if cpu.exists():
+        builds.append((cpu, False))
+    return builds
+
+
 def whisper_available(cfg: dict) -> bool:
-    return bool(config.subtitles_model(cfg)) and (config.whisper_dir() / config.WHISPER_EXE).exists()
+    return bool(config.subtitles_model(cfg)) and bool(whisper_builds(cfg))
 
 
-def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = None) -> dict:
-    """Run whisper-cli; returns its full JSON (segments with token timings)."""
+def start_whisper(exe: Path, gpu: bool, model_path: Path, wav: Path, language: str | None, stem: Path,
+                  extra: list[str] = ()) -> subprocess.Popen:
+    """Start whisper-cli writing <stem>.json, with progress lines on stderr. Low priority; on the processor it
+    leaves half the threads to everything else."""
+    threads = 4 if gpu else max(2, min(12, (os.cpu_count() or 4) // 2))
+    args = [str(exe), "-m", str(model_path), "-f", str(Path(wav).resolve()), "-l", language or "auto",
+            "-t", str(threads), "-ojf", "-of", str(stem), "-pp", *extra]
+    env = None
+    if gpu:  # room for the kernels the driver translates for newer cards, so it happens only once
+        env = os.environ | {"CUDA_CACHE_MAXSIZE": os.environ.get("CUDA_CACHE_MAXSIZE", str(4 << 30))}
+    runtime.prepare(exe.parent)
+    return subprocess.Popen(args, cwd=exe.parent, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) | BELOW_NORMAL)
+
+
+def read_whisper(proc: subprocess.Popen, on_progress=None) -> tuple[int, list[str]]:
+    """Wait for whisper-cli, passing its progress (0-100) on; returns the exit code and the last lines it printed."""
+    tail = []
+    for raw in proc.stderr:
+        line = raw.decode("utf-8", "replace")
+        if (m := PROGRESS.search(line)) and on_progress:
+            on_progress(int(m[1]))
+        tail = (tail + [line.strip()])[-5:]
+    return proc.wait(), tail
+
+
+def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = None, on_progress=None) -> dict:
+    """Run whisper-cli (on the GPU when it can); returns its full JSON (segments with token timings)."""
     model = model or config.subtitles_model(cfg)
-    exe = config.whisper_dir() / config.WHISPER_EXE
-    if not model or not exe.exists():
+    builds = whisper_builds(cfg)
+    if not model or not builds:
         raise WhisperError("No subtitles model installed. Download Whisper on the Models page.")
     tmp = config.DATA / "tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     stem = tmp / f"w{uuid.uuid4().hex[:10]}"
-    threads = max(2, min(16, (os.cpu_count() or 4) - 2))
-    args = [str(exe), "-m", str(Path(cfg["models_dir"]).resolve() / config.MODELS[model]["files"][0]),
-            "-f", str(Path(wav).resolve()), "-l", language or "auto", "-t", str(threads), "-ojf", "-of", str(stem), "-np"]
+    model_path = Path(cfg["models_dir"]).resolve() / config.MODELS[model]["files"][0]
     try:  # the limit grows with the audio (large models on the CPU run near real time); a stuck run can't block the queue
         import soundfile as sf
         seconds = sf.info(str(wav)).duration
     except Exception:
         seconds = 600
-    runtime.prepare(exe.parent)
-    try:
-        p = subprocess.run(args, cwd=exe.parent, capture_output=True, timeout=120 + seconds * 2,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-    except subprocess.TimeoutExpired:
-        stem.with_suffix(".json").unlink(missing_ok=True)
-        raise WhisperError("Whisper took far longer than this audio needs and was stopped.")
-    out = stem.with_suffix(".json")
-    if p.returncode or not out.exists():
-        err = (p.stderr or p.stdout or b"").decode("utf-8", "replace").strip().splitlines()
-        raise WhisperError(runtime.load_problem(p.returncode)
-                           or "Whisper failed: " + (err[-1] if err else f"code {p.returncode}"))
-    try:
-        return json.loads(out.read_text(encoding="utf-8", errors="replace"))
-    finally:
+    error = None
+    for exe, gpu in builds:
+        proc = start_whisper(exe, gpu, model_path, wav, language, stem)
+        timer = threading.Timer(120 + seconds * 2, proc.kill)
+        timer.start()
+        try:
+            code, tail = read_whisper(proc, on_progress)
+        finally:
+            timed_out = not timer.is_alive()
+            timer.cancel()
+        out = stem.with_suffix(".json")
+        if not code and out.exists():
+            try:
+                return json.loads(out.read_text(encoding="utf-8", errors="replace"))
+            finally:
+                out.unlink(missing_ok=True)
         out.unlink(missing_ok=True)
+        error = ("Whisper took far longer than this audio needs and was stopped." if timed_out
+                 else runtime.load_problem(code) or "Whisper failed: " + (tail[-1] if tail else f"code {code}"))
+        if gpu:
+            log.warning("Whisper on the GPU failed (%s); trying the processor", error)
+            if on_progress:
+                on_progress(0)
+    raise WhisperError(error)
 
 
 def whisper_words(result: dict) -> list[tuple[str, float, float]]:

@@ -2,6 +2,11 @@
 
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
+## 0.2.5
+- Whisper on NVIDIA: subtitles and transcripts run on your NVIDIA graphics card, about 8× faster (a 26-minute script in under a minute). One download on Setup or Models → Tools; used automatically, and the processor takes over if the card can't.
+- On the processor, Whisper now runs at low priority with half the threads, so the PC stays usable.
+- The top bar shows the subtitle step's progress, and whether it's on the graphics card or the processor.
+
 ## 0.2.4
 - Tidier top bar: Create, Batches, Voices and Transcribe as tabs; Help (?) and a menu on the right with Settings, Pronunciation, Models, Setup, Connect and About.
 - New About page: version, licences of your models, credits, and your PC's details to copy into a problem report.

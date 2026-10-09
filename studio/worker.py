@@ -46,6 +46,7 @@ class Worker:
         self.dictionary = dictionary
         self.current: tuple[dict, dict] | None = None  # (batch, item) being spoken
         self.finishing: tuple[dict, dict] | None = None  # (batch, script) being finished
+        self.finish_progress: int | None = None  # Whisper's progress on it, 0-100
         self.api_busy = False
         self._api_jobs: collections.deque = collections.deque()
         self._wake = asyncio.Event()
@@ -174,7 +175,7 @@ class Worker:
                 continue
             b, script = nxt
             script["output"].update(status="running", error=None)
-            self.finishing = (b, script)
+            self.finishing, self.finish_progress = (b, script), None
             self.store.save(b)
             try:
                 result = await asyncio.to_thread(self._finish, b, script)
@@ -190,7 +191,7 @@ class Worker:
                 log.exception("Finishing %s/%s failed", b["name"], script["stem"])
                 script["output"].update(status="failed", error=str(e) or e.__class__.__name__)
             finally:
-                self.finishing = None
+                self.finishing = self.finish_progress = None
                 if b["id"] in self.store.batches:
                     self.store.save(b)
 
@@ -231,7 +232,8 @@ class Worker:
                     tmp_wav.parent.mkdir(parents=True, exist_ok=True)
                     audio.save_wav(tmp_wav, track, sr)
                 try:
-                    heard = subtitles.whisper_words(subtitles.run_whisper(self.cfg, src, s.get("language")))
+                    heard = subtitles.whisper_words(subtitles.run_whisper(
+                        self.cfg, src, s.get("language"), on_progress=lambda p: setattr(self, "finish_progress", p)))
                     srt = subtitles.from_whisper(script["text"], heard, duration)
                     match = round(subtitles.match_rate(script["text"], heard), 3)
                     checks = self._segment_checks(items, spans, heard)

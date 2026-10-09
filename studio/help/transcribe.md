@@ -33,8 +33,9 @@ took.
 | **Whisper large-v3 turbo** | Accurate and still fairly quick. A good choice for other people's audio. |
 | **Whisper large-v3** | The most accurate, and the slowest. |
 
-Download them on the **Models** page, under *Subtitles and transcripts*. They run on the processor (CPU), not on
-the graphics card.
+Download them on the **Models** page, under *Subtitles and transcripts*. They run on the processor (CPU), or on
+an NVIDIA graphics card with **Whisper on NVIDIA** (Models page, *Tools*): a 26-minute recording in under a
+minute. See [Setup and models](setup-and-models.md#whisper-on-nvidia-graphics-card).
 
 ## Video files need ffmpeg
 

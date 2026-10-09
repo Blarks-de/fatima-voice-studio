@@ -251,7 +251,8 @@ def create_app(cfg: dict) -> FastAPI:
             "update": {"status": updater.state["status"], "latest": updater.state["latest"]},
             "api_base": f"http://{cfg['host']}:{cfg['port']}/v1",
             "current": {"batch": cur[0]["id"], "item": cur[1]["id"], "text": cur[1]["text"][:120]} if cur else None,
-            "finishing": {"batch": fin[0]["id"], "script": fin[1]["n"]} if fin else None,
+            "finishing": {"batch": fin[0]["id"], "script": fin[1]["n"], "progress": worker.finish_progress,
+                          "gpu": bool(subtitles.whisper_builds(cfg)) and subtitles.whisper_builds(cfg)[0][1]} if fin else None,
             "api_busy": worker.api_busy,
             "queue": [b["id"] for b in sorted(store.batches.values(), key=lambda b: b["order"])
                       if batch_status(b) in ("running", "queued", "paused", "finishing")],
@@ -765,7 +766,7 @@ def create_app(cfg: dict) -> FastAPI:
 
     @app.get("/api/tools")
     def list_tools():
-        return downloads.tools()
+        return downloads.tools()  # each says whether this PC can use it ("available")
 
     @app.post("/api/tools/{key}/{action}")
     async def tool_action(key: str, action: str):

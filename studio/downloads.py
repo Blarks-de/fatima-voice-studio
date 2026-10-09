@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from . import config
+from . import config, hardware
 
 log = logging.getLogger("studio.downloads")
 
@@ -228,8 +228,10 @@ class Downloads:
         for key, t in config.TOOLS.items():
             url, size, _ = t["zip"]
             part = config.tool_dir(key).parent / (url.rsplit("/", 1)[1] + ".part")
-            source = ffmpeg_source() if key == "ffmpeg" else None
+            # ffmpeg may also be on the PC already; other tools only count when the app has them
+            source = ffmpeg_source() if key == "ffmpeg" else ("app" if (config.tool_dir(key) / t["exe"]).exists() else None)
             out.append({"key": key, "label": t["label"], "about": t["about"], "license": t["license"], "size": size,
+                        "available": t.get("needs") != "nvidia" or hardware.has_nvidia(),
                         "installed": source == "app", "on_pc": source == "system", "ready": bool(source),
                         "partial": part.stat().st_size if part.exists() else 0, "job": self.jobs.get("tool:" + key)})
         return out
@@ -246,6 +248,10 @@ class Downloads:
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30, read=300)) as client:
                 await self._install_zips(client, [t["zip"]], config.tool_dir(key), t["exe"], job)
+            if t.get("keep"):  # only what the app runs (the CUDA Whisper zip also has demos and tests)
+                for f in config.tool_dir(key).iterdir():
+                    if f.is_file() and not any(f.match(k) for k in t["keep"]):
+                        f.unlink()
             job["status"] = "done"
         except asyncio.CancelledError:
             job["status"] = "cancelled"

@@ -110,6 +110,11 @@ def detect(refresh: bool = False) -> dict:
     return _cache
 
 
+def has_nvidia() -> bool:
+    """An NVIDIA card is present (for the CUDA build of Whisper)."""
+    return any(g["vendor"] == "nvidia" for g in detect()["gpus"])
+
+
 def main_gpu(hw: dict) -> dict | None:
     """The card speech will run on: the biggest dedicated one."""
     return next((g for g in hw["gpus"] if not g["integrated"]), None)

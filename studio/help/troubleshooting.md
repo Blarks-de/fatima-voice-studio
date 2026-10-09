@@ -61,6 +61,16 @@ The model download may be damaged. On the Models page, **Remove** the model and 
 - Run the **speed test** again on Setup to see the current speed. About 2× faster than real time is normal on a
   recent NVIDIA card; a PC without one is slower than real time.
 
+### "Writing files · subtitles" takes a long time
+
+That's Whisper timing the subtitles. On the processor, a long script with a big Whisper model takes minutes (a
+26-minute script with large-v3 turbo: about 6½). The top bar shows its progress and where it runs.
+
+- On an NVIDIA card, download **Whisper on NVIDIA** (Setup, step 3, or Models → Tools): the same script then takes
+  under a minute.
+- Without one, pick **Whisper small** in **Settings → Files → Whisper model**: plenty for subtitles, since they
+  use your script's own words.
+
 ### The estimate on the Create page is wrong
 
 Run the **speed test** on Setup once. Until then the estimate uses a typical speed, not yours.

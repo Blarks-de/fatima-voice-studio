@@ -49,7 +49,8 @@ graphics card.
 ## Whisper models (subtitles and transcripts)
 
 Whisper listens to the finished audio to time the subtitles, checks that every part was read, and powers the
-[Transcribe](transcribe.md) page. It runs on the processor, not the graphics card.
+[Transcribe](transcribe.md) page. It runs on the processor, or on an NVIDIA graphics card once you download
+**Whisper on NVIDIA** (see below).
 
 | Model | Notes | Download |
 |---|---|---|
@@ -62,6 +63,19 @@ Whisper listens to the finished audio to time the subtitles, checks that every p
 When you have more than one, choose which one is used with **Use this one** on the Models page, or in
 **Settings → Files**. Your subtitles always use your script's own words; Whisper only times them, so *small* is
 plenty for subtitles.
+
+### Whisper on NVIDIA (graphics card)
+
+On a PC with an NVIDIA card, Setup (step 3) and the Models page (under *Tools*) offer **Whisper on NVIDIA**, a
+one-time download of 653 MB (1.1 GB once installed, mostly NVIDIA's own libraries). Once it's there, subtitles and
+transcripts run on the graphics card by themselves, about 8× faster than on the processor: a 26-minute script is
+subtitled in under a minute instead of about 6½. The PC also stays free while it works.
+
+- On the graphics card, **large-v3 turbo** is both the most accurate and the quickest, so pick it.
+- The very first run after the download takes a little longer (the driver prepares the card once).
+- If the graphics card can't run it for any reason, the app quietly uses the processor instead.
+- Without an NVIDIA card (AMD, Intel or none), Whisper runs on the processor, at low priority, so the rest of the
+  PC stays usable.
 
 ## Voice separator
 

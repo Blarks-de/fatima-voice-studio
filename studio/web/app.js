@@ -397,12 +397,18 @@ async function pollState() {
     const pct = eng.frames_expected ? Math.min(99, Math.round(100 * eng.frames / eng.frames_expected)) : null;
     text = st.api_busy && !st.current ? 'Speaking · API / preview' : `Speaking${pct != null ? ` · ${pct}%` : ''}`;
     sub = st.current ? `“${st.current.text}”` : '';
-  } else if (st.finishing) { dot = 'busy'; text = 'Writing files · subtitles'; }
+  } else if (st.finishing) {
+    dot = 'busy';
+    const p = st.finishing.progress;
+    text = `Writing files · subtitles${p != null ? ` · ${p}%` : ''}`;
+    sub = st.finishing.gpu ? 'Whisper on the graphics card' : 'Whisper on the processor';
+  }
   else { text = st.setup_ready ? `Ready · ${eng.engine.toUpperCase()}` : 'Setup needed'; dot = st.setup_ready ? '' : 'off'; }
-  const ring = dot === 'busy' && st.current && eng.frames_expected;
+  const finPct = st.finishing?.progress;
+  const ring = dot === 'busy' && ((st.current && eng.frames_expected) || finPct != null);
   $('engine-text').textContent = text; $('engine-sub').textContent = sub; $('engine-sub').title = sub;
   $('engine-dot').className = `state-dot ${dot}${ring ? ' ring' : ''}`;
-  $('engine-dot').style.setProperty('--p', ring ? Math.min(99, Math.round(100 * eng.frames / eng.frames_expected)) : 0);
+  $('engine-dot').style.setProperty('--p', !ring ? 0 : st.current ? Math.min(99, Math.round(100 * eng.frames / eng.frames_expected)) : finPct);
   $('foot-right').innerHTML = `<a href="#about">v${esc(st.version)}</a> · ${esc(st.api_base)}`;
   if (st.update?.status === 'available') $('foot-left').innerHTML = `Fatima Voice Studio · <a href="#settings">update ${esc(st.update.latest)} available</a>`;
   renderUpdateBadge();
@@ -1120,10 +1126,10 @@ async function loadModels() {
     + models.filter((m) => m.kind === kind).map(modelCard).join('');
   const tools = await api('/api/tools');
   setHtml($('models-list'), group('voice', 'Voice models', 'Speak your scripts. Each runs on the engine chosen on the Setup page.')
-    + group('subtitles', 'Subtitles and transcripts', 'Time the SRT subtitles of every finished script, and power the Transcribe page and the transcription API. Run on the CPU; the small one is plenty for subtitles.')
+    + group('subtitles', 'Subtitles and transcripts', 'Time the SRT subtitles of every finished script, and power the Transcribe page and the transcription API. They run on the processor, or on an NVIDIA graphics card with <b>Whisper on NVIDIA</b> under Tools below: much faster.')
     + group('separation', 'Voice separator', 'Takes a voice out of music or background sound when you add a voice from a video or a song.')
-    + `<div class="group-title">Tools</div><p class="help" style="margin:-6px 0 12px">Programs the app uses for some file types.</p>`
-    + tools.map(toolCard).join(''));
+    + `<div class="group-title">Tools</div><p class="help" style="margin:-6px 0 12px">Extra programs: ffmpeg for video files, and Whisper for NVIDIA graphics cards.</p>`
+    + tools.filter((t) => t.available).map(toolCard).join(''));
   const busy = (j) => j && ['downloading', 'checking', 'installing'].includes(j.status);
   if (models.some((m) => busy(m.job)) || tools.some((t) => busy(t.job))) setTimeout(() => S.view === 'models' && loadModels(), 1000);
 }
@@ -1142,15 +1148,18 @@ function toolCard(t) {
   else if (t.installed) acts = `<span class="chip ok">${icon('check')} Downloaded</span><button class="btn sm" data-t="remove" data-key="${t.key}">Remove</button>`;
   else if (t.on_pc) acts = `<span class="chip ok">${icon('check')} Already on this PC</span>`;
   else acts = `<button class="btn sm accent" data-t="download" data-key="${t.key}">${icon('download')} Download ${fmtSize(t.size - t.partial)}</button>`;
+  if (t.installed && !busy) acts = acts.replace('data-t="remove"', `data-t="remove" data-label="${esc(t.label)}"`);
   return `<div class="card mcard"><div class="main"><div class="name">${esc(t.label)} <span class="license ok">${esc(t.license)}</span></div>
       <div class="about">${esc(t.about)}</div>${t.job?.status === 'failed' ? `<div class="err-note">${esc(t.job.error)}</div>` : ''}</div>
     <div class="acts">${acts}</div></div>`;
 }
 document.addEventListener('click', run(async (e) => {
   const b = e.target.closest('[data-t]'); if (!b) return;
-  if (b.dataset.t === 'remove' && !await confirmDialog('Remove ffmpeg?', 'Video files can no longer be read until you download it again.', 'Remove')) return;
+  const what = b.dataset.key === 'ffmpeg' ? 'Video files can no longer be read until you download it again.'
+    : 'Subtitles and transcripts go back to the processor (slower) until you download it again.';
+  if (b.dataset.t === 'remove' && !await confirmDialog(`Remove ${b.dataset.label || b.dataset.key}?`, what, 'Remove')) return;
   await api(`/api/tools/${b.dataset.key}/${b.dataset.t}`, { method: 'POST' });
-  setTimeout(loadModels, 300);
+  setTimeout(() => (S.view === 'setup' ? loadSetup() : loadModels()), 300);
 }));
 
 function modelCard(m) {
@@ -1204,6 +1213,7 @@ async function loadSetup(refresh = false) {
   }).join('');
   const voiceModels = s.models.filter((m) => m.kind === 'voice').map(modelCard).join('');
   const subModels = s.models.filter((m) => m.kind === 'subtitles').map(modelCard).join('');
+  const gpuWhisper = (await api('/api/tools').catch(() => [])).find((t) => t.key === 'whisper-cuda' && t.available);
   const b = s.benchmark;
   const html = `
     <div class="card hw">
@@ -1217,8 +1227,9 @@ async function loadSetup(refresh = false) {
     ${engines}
     ${stepHead(2, s.steps.model, 'Voice model', 'Speaks your scripts. Both versions are free for commercial use.')}
     ${voiceModels}
-    ${stepHead(3, s.steps.subtitles, 'Subtitles <span class="opt" style="font-weight:400;font-size:14px;color:var(--muted)">— recommended</span>', 'Times the SRT subtitles for your videos, on the CPU. Small is plenty for subtitles; the bigger ones are more accurate for transcribing other audio.')}
-    ${subModels}
+    ${stepHead(3, s.steps.subtitles, 'Subtitles <span class="opt" style="font-weight:400;font-size:14px;color:var(--muted)">— recommended</span>', gpuWhisper ? 'Times the SRT subtitles for your videos. With <b>Whisper on NVIDIA</b> (below) it runs on your graphics card, many times faster than on the processor; large-v3 turbo is then both the most accurate and the quickest.'
+      : 'Times the SRT subtitles for your videos, on the processor. Small is plenty for subtitles; the bigger ones are more accurate for transcribing other audio.')}
+    ${subModels}${gpuWhisper ? toolCard(gpuWhisper) : ''}
     ${stepHead(4, s.steps.voice, 'A voice', s.steps.voice ? 'You have voices in your library.' : 'Add a 6–15 second clip of a voice, or find a new one.')}
     ${s.ready ? `<a class="btn ${s.steps.voice ? '' : 'accent'}" href="#voices">${icon('users')} Open Voices</a>` : '<p class="help">Available once the engine and a voice model are downloaded.</p>'}
     ${stepHead(5, s.steps.benchmark, 'Speed test', 'Speaks a short paragraph to measure how fast this PC is.')}
@@ -1228,7 +1239,8 @@ async function loadSetup(refresh = false) {
       <button class="btn ${b ? '' : 'accent'}" id="bench-go" ${s.ready ? '' : 'disabled'}>${icon('play')} ${b ? 'Test again' : 'Run speed test'}</button></div>`;
   setHtml($('setup-body'), html);
   const busy = s.engines.some((e) => e.job && ['downloading', 'checking', 'installing'].includes(e.job.status))
-    || s.models.some((m) => m.job && ['downloading', 'checking', 'installing'].includes(m.job.status));
+    || s.models.some((m) => m.job && ['downloading', 'checking', 'installing'].includes(m.job.status))
+    || ['downloading', 'checking', 'installing'].includes(gpuWhisper?.job?.status);
   if (busy) setTimeout(() => S.view === 'setup' && loadSetup(), 1000);
 }
 $('setup-refresh').addEventListener('click', () => loadSetup(true));

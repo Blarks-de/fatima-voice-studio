@@ -87,7 +87,8 @@ ENGINES = {
 }
 ENGINE_EXE = "llama-tts.exe"
 
-# whisper.cpp (CPU build: fast enough for subtitles and works on every PC, no GPU memory used)
+# whisper.cpp. The CPU build works on every PC and comes with the first Whisper model; on an NVIDIA card the
+# CUDA build (a tool on the Models page, "whisper-cuda") is used instead when downloaded: about 8x faster.
 WHISPER_RELEASE = "b5454"
 WHISPER_ZIP = (f"https://github.com/ggml-org/whisper.cpp/releases/download/{WHISPER_RELEASE}/whisper-bin-x64.zip",
                8928640, "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb")
@@ -140,7 +141,19 @@ TOOLS = {
                "license": "GPL v3 — a separate program; using it doesn't affect your audio",
                "zip": ("https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
                        114768076, "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba")},
+    # Same release as the CPU build. Made with CUDA 12.4; newer cards (RTX 50) run it too, the driver translates
+    # it once on first use. Only whisper-cli and the libraries it loads are kept (1.1 GB, mostly NVIDIA's cuBLAS).
+    "whisper-cuda": {"label": "Whisper on NVIDIA (graphics card)", "exe": "whisper-cli.exe", "needs": "nvidia",
+                     "about": "Subtitles and transcripts on your NVIDIA graphics card instead of the processor: about 8x "
+                              "faster (a 26-minute script in under a minute), and the PC stays free. Used automatically "
+                              "once downloaded.",
+                     "license": "MIT, with NVIDIA's CUDA libraries",
+                     "zip": (f"https://github.com/ggml-org/whisper.cpp/releases/download/{WHISPER_RELEASE}/whisper-bin-win-cuda-12.4.0-x64.zip",
+                             684913404, "afef0b881c500958921c3f5523b50e59ee2ec9b6f5cbd25b324c51ed308a957a"),
+                     "keep": ["whisper-cli.exe", "whisper.dll", "ggml*.dll", "cublas64_12.dll", "cublasLt64_12.dll",
+                              "cudart64_12.dll"]},
 }
+WHISPER_GPU = "whisper-cuda"
 
 
 def tool_dir(key: str) -> Path:

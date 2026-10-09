@@ -4,7 +4,6 @@ import asyncio
 import datetime as dt
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
@@ -15,7 +14,6 @@ from . import config, media, runtime, subtitles
 from .trash import to_recycle_bin
 
 log = logging.getLogger("studio.transcribe")
-PROGRESS = re.compile(r"progress\s*=\s*(\d+)%")
 
 
 def _now() -> str:
@@ -107,25 +105,18 @@ class Transcripts:
             raise subtitles.WhisperError("No Whisper model is downloaded. Get one on the Models page.")
         t.update(status="running", model=model)
         self.save(t)
-        exe = config.whisper_dir() / config.WHISPER_EXE
-        threads = max(2, min(16, (os.cpu_count() or 4) - 2))
         stem = folder / "whisper"
-        args = [str(exe), "-m", str(Path(self.cfg["models_dir"]).resolve() / config.MODELS[model]["files"][0]),
-                "-f", str(wav), "-l", t["language"] or "auto", "-t", str(threads), "-ojf", "-of", str(stem), "-pp"]
-        if t["translate"]:
-            args.append("-tr")
-        runtime.prepare(exe.parent)
-        self._proc = subprocess.Popen(args, cwd=exe.parent, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                      creationflags=media.NO_WINDOW)
-        tail = []
-        for raw in self._proc.stderr:
-            line = raw.decode("utf-8", "replace")
-            if m := PROGRESS.search(line):
-                t["progress"] = int(m[1])
-            tail = (tail + [line.strip()])[-5:]
-        code = self._proc.wait()
-        self._proc = None
+        model_path = Path(self.cfg["models_dir"]).resolve() / config.MODELS[model]["files"][0]
         result_file = stem.with_suffix(".json")
+        for exe, gpu in subtitles.whisper_builds(self.cfg):  # the GPU first; the processor if that fails
+            self._proc = subtitles.start_whisper(exe, gpu, model_path, wav, t["language"], stem,
+                                                 ["-tr"] if t["translate"] else [])
+            code, tail = subtitles.read_whisper(self._proc, lambda p: t.__setitem__("progress", p))
+            self._proc = None
+            if (not code and result_file.exists()) or t["id"] not in self.items:  # done, or deleted meanwhile
+                break
+            log.warning("Whisper (%s) failed for %s: %s", "GPU" if gpu else "CPU", t["name"], tail[-1:] or code)
+            t["progress"] = 0
         if code or not result_file.exists():
             raise subtitles.WhisperError(runtime.load_problem(code)
                                          or "Whisper failed: " + (tail[-1] if tail else f"code {code}"))
