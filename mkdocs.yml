@@ -1,0 +1,55 @@
+# The help website (GitHub Pages), built from the same guides the app shows on its Help page.
+# Build: pip install -r docs/site/requirements.txt, then mkdocs serve (preview) or mkdocs build --strict.
+# .github/workflows/docs.yml publishes it on every push to main that changes the guides.
+site_name: Fatima Voice Studio help
+site_description: Guides for Fatima Voice Studio, voiceovers and voice cloning on your own Windows PC.
+site_url: https://hassanxs.github.io/fatima-voice-studio/
+repo_url: https://github.com/hassanxs/fatima-voice-studio
+repo_name: fatima-voice-studio
+edit_uri: edit/main/studio/help/
+copyright: Fatima Voice Studio · MIT licence
+
+docs_dir: studio/help
+site_dir: site
+# The sidebar is made from studio/help/README.md (one section per ## heading), like the app's Help page.
+hooks:
+  - docs/site/hooks.py
+
+theme:
+  name: material
+  custom_dir: docs/site/overrides
+  favicon: assets/icon.png
+  logo: assets/icon.png
+  font:
+    text: Geist
+    code: Geist Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/weather-sunny, name: Light mode }
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+      # GitHub's heading ids, so links like voices.md#what-makes-a-good-clip work in the app, on GitHub and here
+      slugify: !!python/object/apply:pymdownx.slugs.slugify { kwds: { case: lower } }
+  - pymdownx.superfences
+
+validation:
+  links:
+    anchors: warn

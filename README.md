@@ -82,8 +82,9 @@ everything (settings, models, engine, voices, batches) stays inside the project 
 
 ## Help and guides
 
-Step-by-step guides for every part of the app are in [`studio/help`](studio/help/README.md), and the same pages are
-inside the app under **Help** (with a *Help* link on every page, and search).
+Step-by-step guides for every part of the app, in three places: on the **help website**,
+[hassanxs.github.io/fatima-voice-studio](https://hassanxs.github.io/fatima-voice-studio/) (with search); inside the
+app under **Help** (works offline); and as Markdown in [`studio/help`](studio/help/README.md).
 
 - [Getting started](studio/help/getting-started.md): install, Setup, your first voice and voiceover
 - [Voices](studio/help/voices.md) · [Making voiceovers](studio/help/making-voiceovers.md) ·

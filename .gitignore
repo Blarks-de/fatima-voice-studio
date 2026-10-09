@@ -24,3 +24,6 @@ dist/
 
 # Local tool settings
 .claude/
+
+# Help website build output (mkdocs build)
+/site/

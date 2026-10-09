@@ -45,8 +45,8 @@ batches (they wait in the queue), or close the browser: the app keeps working in
 - **Paste and split** — paste many scripts at once. Start each one with a title line like `### Episode 12`, or put
   a line of `---` between them. The app shows how many scripts it found; click **Use these scripts**.
 - **Import files** — choose one or more files:
-  - each **.txt** or **.md** file becomes one script, titled with the file name;
-  - a **.csv** file (from Excel or Google Sheets) has one script per row, with a `text` column and, if you like,
+    - each **.txt** or **.md** file becomes one script, titled with the file name;
+    - a **.csv** file (from Excel or Google Sheets) has one script per row, with a `text` column and, if you like,
     `title`, `voice` and `language` columns.
 
 Example of *Paste and split*:
