@@ -1,0 +1,194 @@
+# Builds whisper.cpp for the graphics cards the voice engines support, and publishes the builds as their own
+# release (tag "whisper-<whisper.cpp tag>"). The app downloads the one that matches the voice engine a PC uses:
+#
+#   cuda-13.4  -> voice engine "cuda"   (RTX 20 series and newer); uses that engine's cuBLAS 13 / cudart 13
+#   cuda-12.4  -> voice engine "cuda12" (older drivers, GTX 10/16); uses that engine's cuBLAS 12 / cudart 12
+#   vulkan     -> voice engine "vulkan" (AMD, Intel, NVIDIA); needs only the graphics driver
+#
+# The zips hold whisper-cli and the ggml libraries it loads, nothing of NVIDIA's: the CUDA libraries come from the
+# voice engine already on the PC. Card coverage is ggml's default list, the same as llama.cpp's own builds.
+# Run it by hand (Actions -> Whisper builds -> Run workflow) when moving to a newer whisper.cpp; app releases don't.
+name: Whisper builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      whisper_tag:
+        description: "whisper.cpp tag to build"
+        required: true
+        default: "b5454"
+      publish:
+        description: "Publish as a release (otherwise the zips are only kept as workflow artifacts)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: whisper ${{ matrix.backend }}
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: cuda-13.4
+            defines: -DGGML_CUDA=ON -DGGML_CUDA_CCCL_VERSION=v3.4.3
+          - backend: cuda-12.4
+            defines: -DGGML_CUDA=ON -DGGML_CUDA_CCCL_VERSION=v3.4.3
+          - backend: vulkan
+            defines: -DGGML_VULKAN=ON
+    env:
+      VULKAN_VERSION: 1.4.357.0
+    steps:
+      - name: Get whisper.cpp ${{ inputs.whisper_tag }}
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/whisper.cpp
+          ref: ${{ inputs.whisper_tag }}
+
+      # The same CUDA components and versions as llama.cpp's Windows builds of the voice engine (b11476),
+      # from NVIDIA's redistributable archives.
+      - name: Install CUDA 13.4
+        if: matrix.backend == 'cuda-13.4'
+        shell: pwsh
+        run: |
+          $root = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.4"
+          $base = "https://developer.download.nvidia.com/compute/cuda/redist"
+          $parts = @(
+            "cuda_crt/windows-x86_64/cuda_crt-windows-x86_64-13.4.59-archive.zip",
+            "cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-13.4.49-archive.zip",
+            "cuda_nvcc/windows-x86_64/cuda_nvcc-windows-x86_64-13.4.59-archive.zip",
+            "cuda_nvrtc/windows-x86_64/cuda_nvrtc-windows-x86_64-13.4.59-archive.zip",
+            "libcublas/windows-x86_64/libcublas-windows-x86_64-13.7.0.27-archive.zip",
+            "libnvvm/windows-x86_64/libnvvm-windows-x86_64-13.4.59-archive.zip",
+            "cuda_nvtx/windows-x86_64/cuda_nvtx-windows-x86_64-13.4.49-archive.zip",
+            "cuda_profiler_api/windows-x86_64/cuda_profiler_api-windows-x86_64-13.4.49-archive.zip",
+            "visual_studio_integration/windows-x86_64/visual_studio_integration-windows-x86_64-13.4.49-archive.zip",
+            "cccl/windows-x86_64/cccl-windows-x86_64-13.3.4.2.1-archive.zip")
+          New-Item -ItemType Directory -Force $root | Out-Null
+          foreach ($p in $parts) {
+            $zip = Join-Path $env:RUNNER_TEMP (Split-Path $p -Leaf)
+            curl.exe -sSfL -o $zip "$base/$p"
+            7z x $zip -o"$env:RUNNER_TEMP\cuda" -y | Out-Null
+          }
+          Get-ChildItem "$env:RUNNER_TEMP\cuda" -Directory | ForEach-Object { robocopy $_.FullName $root /E /NFL /NDL /NJH /NJS | Out-Null }
+          "$root\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CUDA_PATH=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CUDA_PATH_V13_4=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install CUDA 12.4
+        if: matrix.backend == 'cuda-12.4'
+        shell: pwsh
+        run: |
+          $root = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4"
+          $base = "https://developer.download.nvidia.com/compute/cuda/redist"
+          $parts = @(
+            "cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-12.4.127-archive.zip",
+            "cuda_nvcc/windows-x86_64/cuda_nvcc-windows-x86_64-12.4.131-archive.zip",
+            "cuda_nvrtc/windows-x86_64/cuda_nvrtc-windows-x86_64-12.4.127-archive.zip",
+            "libcublas/windows-x86_64/libcublas-windows-x86_64-12.4.5.8-archive.zip",
+            "cuda_nvtx/windows-x86_64/cuda_nvtx-windows-x86_64-12.4.127-archive.zip",
+            "cuda_profiler_api/windows-x86_64/cuda_profiler_api-windows-x86_64-12.4.127-archive.zip",
+            "visual_studio_integration/windows-x86_64/visual_studio_integration-windows-x86_64-12.4.127-archive.zip",
+            "cuda_nvprof/windows-x86_64/cuda_nvprof-windows-x86_64-12.4.127-archive.zip",
+            "cuda_cccl/windows-x86_64/cuda_cccl-windows-x86_64-12.4.127-archive.zip")
+          New-Item -ItemType Directory -Force $root | Out-Null
+          foreach ($p in $parts) {
+            $zip = Join-Path $env:RUNNER_TEMP (Split-Path $p -Leaf)
+            curl.exe -sSfL -o $zip "$base/$p"
+            7z x $zip -o"$env:RUNNER_TEMP\cuda" -y | Out-Null
+          }
+          Get-ChildItem "$env:RUNNER_TEMP\cuda" -Directory | ForEach-Object { robocopy $_.FullName $root /E /NFL /NDL /NJH /NJS | Out-Null }
+          "$root\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "CUDA_PATH=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CUDA_PATH_V12_4=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install the Vulkan SDK
+        if: matrix.backend == 'vulkan'
+        shell: pwsh
+        run: |
+          curl.exe -sSfL -o "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+          "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "C:\VulkanSDK\$env:VULKAN_VERSION\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
+
+      # Backends as separate DLLs (GGML_BACKEND_DL), plus every CPU variant, so the same whisper-cli also runs on the
+      # processor when the graphics card can't be used.
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cmake -S . -B build -G "Ninja Multi-Config" ^
+            -DGGML_BACKEND_DL=ON -DGGML_NATIVE=OFF -DGGML_CPU_ALL_VARIANTS=ON ^
+            -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF -DBUILD_SHARED_LIBS=ON ^
+            ${{ matrix.defines }}
+          if errorlevel 1 exit /b 1
+          set /A JOBS=%NUMBER_OF_PROCESSORS%-1
+          cmake --build build --config Release -j %JOBS%
+
+      - name: Pack
+        shell: pwsh
+        run: |
+          $bin = "build\bin\Release"
+          $out = "pack"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item "$bin\whisper-cli.exe", "$bin\whisper.dll", "$bin\ggml.dll", "$bin\ggml-base.dll" $out
+          Copy-Item "$bin\ggml-cpu-*.dll" $out
+          if ("${{ matrix.backend }}" -like "cuda-*") { Copy-Item "$bin\ggml-cuda.dll" $out } else { Copy-Item "$bin\ggml-vulkan.dll" $out }
+          Copy-Item LICENSE "$out\LICENSE-whisper.cpp.txt"
+          $sha = git rev-parse HEAD
+          @"
+          whisper.cpp ${{ inputs.whisper_tag }} ($sha), built for Fatima Voice Studio: ${{ matrix.backend }}.
+          https://github.com/ggml-org/whisper.cpp  (MIT licence, see LICENSE-whisper.cpp.txt)
+          The CUDA builds load cudart/cuBLAS from the app's voice engine folder; nothing of NVIDIA's is in this zip.
+          "@ | Out-File "$out\README.txt" -Encoding utf8
+          Get-ChildItem $out | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}} | Format-Table | Out-String | Write-Host
+          $zip = "whisper-${{ inputs.whisper_tag }}-win-${{ matrix.backend }}-x64.zip"
+          Compress-Archive -Path "$out\*" -DestinationPath $zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whisper-${{ matrix.backend }}
+          path: whisper-*.zip
+
+  publish:
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # --latest=false: the app's updater reads the latest release, which must stay the newest app version.
+      - name: Publish release whisper-${{ inputs.whisper_tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum *.zip > SHA256SUMS.txt
+          {
+            echo "whisper.cpp ${{ inputs.whisper_tag }} for the graphics card, built for Fatima Voice Studio. The app downloads"
+            echo "the one matching your voice engine by itself; there's nothing to install by hand."
+            echo
+            echo "| File | Voice engine | Cards |"
+            echo "|---|---|---|"
+            echo "| cuda-13.4 | NVIDIA · CUDA | GeForce RTX 20 series and newer |"
+            echo "| cuda-12.4 | NVIDIA · CUDA (older driver) | GeForce GTX 9/10/16 series and newer, older drivers |"
+            echo "| vulkan | AMD / Intel · Vulkan | AMD Radeon, Intel Arc, NVIDIA |"
+            echo
+            echo "MIT licence (whisper.cpp). The CUDA builds use the CUDA libraries from the voice engine already on the PC."
+            echo
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+          } > notes.md
+          gh release create "whisper-${{ inputs.whisper_tag }}" *.zip SHA256SUMS.txt \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Whisper ${{ inputs.whisper_tag }} (graphics card builds)" --notes-file notes.md --latest=false
