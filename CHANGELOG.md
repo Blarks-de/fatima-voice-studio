@@ -3,7 +3,7 @@
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
 ## 0.2.5
-- Whisper on NVIDIA: subtitles and transcripts run on your NVIDIA graphics card, about 8× faster (a 26-minute script in under a minute). One download on Setup or Models → Tools; used automatically, and the processor takes over if the card can't.
+- Whisper runs on your graphics card, like the voice: subtitles and transcripts about 9× faster (a 26-minute script in about 40 seconds instead of 6½ minutes). NVIDIA, AMD and Intel cards; it sets itself up after the update with a small one-time download, and uses the processor if the card can't.
 - On the processor, Whisper now runs at low priority with half the threads, so the PC stays usable.
 - The top bar shows the subtitle step's progress, and whether it's on the graphics card or the processor.
 

@@ -16,7 +16,7 @@ import unicodedata
 import uuid
 from pathlib import Path
 
-from . import config, hardware, runtime, text as textmod
+from . import config, runtime, text as textmod
 
 log = logging.getLogger("studio.subtitles")
 
@@ -36,19 +36,22 @@ def _norm(word: str) -> str:
 
 
 PROGRESS = re.compile(r"progress\s*=\s*(\d+)%")  # whisper-cli -pp
+VK_DEVICE = re.compile(r"ggml_vulkan: (\d+) = .*?\| uma: (\d)")  # each Vulkan device; uma 1 = built into the processor
+VK_USING = re.compile(r"using Vulkan(\d+) backend")
+ON_CARD = re.compile(r"using (CUDA|Vulkan)\d+ backend")  # whisper-cli found the graphics card
 BELOW_NORMAL = 0x00004000  # Windows priority: Whisper never makes the rest of the PC wait
 
 
-def whisper_builds(cfg: dict) -> list[tuple[Path, bool]]:
-    """The whisper-cli builds to try, best first: (exe, on the GPU). The NVIDIA build when it's downloaded and an
-    NVIDIA card is present, then the CPU build, which is also the fallback if the GPU run fails."""
+def whisper_builds(cfg: dict) -> list[dict]:
+    """The whisper-cli builds to try, best first: the graphics card one for the voice engine in use (when it's
+    downloaded), then the CPU one, which is also the fallback if the graphics card run fails."""
     builds = []
-    gpu = config.tool_dir(config.WHISPER_GPU) / config.WHISPER_EXE
-    if gpu.exists() and hardware.has_nvidia():
-        builds.append((gpu, True))
+    engine = config.whisper_gpu_engine(cfg)
+    if engine and (config.whisper_gpu_dir(engine) / config.WHISPER_EXE).exists():
+        builds.append({"exe": config.whisper_gpu_dir(engine) / config.WHISPER_EXE, "gpu": True, "engine": engine})
     cpu = config.whisper_dir() / config.WHISPER_EXE
     if cpu.exists():
-        builds.append((cpu, False))
+        builds.append({"exe": cpu, "gpu": False, "engine": None})
     return builds
 
 
@@ -56,34 +59,47 @@ def whisper_available(cfg: dict) -> bool:
     return bool(config.subtitles_model(cfg)) and bool(whisper_builds(cfg))
 
 
-def start_whisper(exe: Path, gpu: bool, model_path: Path, wav: Path, language: str | None, stem: Path,
+def start_whisper(cfg: dict, build: dict, model_path: Path, wav: Path, language: str | None, stem: Path,
                   extra: list[str] = ()) -> subprocess.Popen:
     """Start whisper-cli writing <stem>.json, with progress lines on stderr. Low priority; on the processor it
     leaves half the threads to everything else."""
-    threads = 4 if gpu else max(2, min(12, (os.cpu_count() or 4) // 2))
+    exe, engine = build["exe"], build["engine"]
+    threads = 4 if build["gpu"] else max(2, min(12, (os.cpu_count() or 4) // 2))
     args = [str(exe), "-m", str(model_path), "-f", str(Path(wav).resolve()), "-l", language or "auto",
             "-t", str(threads), "-ojf", "-of", str(stem), "-pp", *extra]
     env = None
-    if gpu:  # room for the kernels the driver translates for newer cards, so it happens only once
-        env = os.environ | {"CUDA_CACHE_MAXSIZE": os.environ.get("CUDA_CACHE_MAXSIZE", str(4 << 30))}
+    if engine in ("cuda", "cuda12"):  # cuBLAS and cudart come from the voice engine's folder
+        env = os.environ | {"PATH": str(config.engine_dir(cfg, engine)) + os.pathsep + os.environ.get("PATH", "")}
+    elif engine == "vulkan" and cfg.get("whisper_vk_device") is not None:
+        args += ["-dev", str(cfg["whisper_vk_device"])]
     runtime.prepare(exe.parent)
     return subprocess.Popen(args, cwd=exe.parent, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) | BELOW_NORMAL)
 
 
-def read_whisper(proc: subprocess.Popen, on_progress=None) -> tuple[int, list[str]]:
-    """Wait for whisper-cli, passing its progress (0-100) on; returns the exit code and the last lines it printed."""
-    tail = []
+def read_whisper(proc: subprocess.Popen, on_progress=None) -> tuple[int, list[str], int | None]:
+    """Wait for whisper-cli, passing its progress (0-100) on. Returns the exit code, the last lines it printed, and
+    a better Vulkan device when it started on a chip built into the processor while a dedicated card is there (it's
+    stopped then, to run again on the card: laptops list the built-in chip first, and it's slower than the CPU)."""
+    tail, uma, better = [], {}, None
+    proc.on_card = False
     for raw in proc.stderr:
         line = raw.decode("utf-8", "replace")
+        if ON_CARD.search(line):
+            proc.on_card = True
         if (m := PROGRESS.search(line)) and on_progress:
             on_progress(int(m[1]))
+        elif m := VK_DEVICE.search(line):
+            uma[int(m[1])] = m[2] == "1"
+        elif (m := VK_USING.search(line)) and uma.get(int(m[1])) and not all(uma.values()):
+            better = min(d for d, built_in in uma.items() if not built_in)
+            proc.kill()
         tail = (tail + [line.strip()])[-5:]
-    return proc.wait(), tail
+    return proc.wait(), tail, better
 
 
 def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = None, on_progress=None) -> dict:
-    """Run whisper-cli (on the GPU when it can); returns its full JSON (segments with token timings)."""
+    """Run whisper-cli (on the graphics card when it can); returns its full JSON (segments with token timings)."""
     model = model or config.subtitles_model(cfg)
     builds = whisper_builds(cfg)
     if not model or not builds:
@@ -98,15 +114,8 @@ def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = 
     except Exception:
         seconds = 600
     error = None
-    for exe, gpu in builds:
-        proc = start_whisper(exe, gpu, model_path, wav, language, stem)
-        timer = threading.Timer(120 + seconds * 2, proc.kill)
-        timer.start()
-        try:
-            code, tail = read_whisper(proc, on_progress)
-        finally:
-            timed_out = not timer.is_alive()
-            timer.cancel()
+    for build in builds:
+        code, tail, timed_out = run_build(cfg, build, model_path, wav, language, stem, 120 + seconds * 2, on_progress)
         out = stem.with_suffix(".json")
         if not code and out.exists():
             try:
@@ -116,11 +125,37 @@ def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = 
         out.unlink(missing_ok=True)
         error = ("Whisper took far longer than this audio needs and was stopped." if timed_out
                  else runtime.load_problem(code) or "Whisper failed: " + (tail[-1] if tail else f"code {code}"))
-        if gpu:
-            log.warning("Whisper on the GPU failed (%s); trying the processor", error)
+        if build["gpu"]:
+            log.warning("Whisper on the graphics card failed (%s); trying the processor", error)
             if on_progress:
                 on_progress(0)
     raise WhisperError(error)
+
+
+def run_build(cfg: dict, build: dict, model_path: Path, wav: Path, language: str | None, stem: Path,
+              limit: float, on_progress=None, extra: list[str] = (), on_start=None) -> tuple[int, list[str], bool]:
+    """One whisper-cli run with a time limit; moves to the dedicated card (and remembers it) when Vulkan picked a
+    built-in chip. on_start gets the process (so it can be stopped). Returns the exit code, the last lines it
+    printed, and whether it ran out of time."""
+    for _ in range(2):
+        proc = start_whisper(cfg, build, model_path, wav, language, stem, extra)
+        if on_start:
+            on_start(proc)
+        timer = threading.Timer(limit, proc.kill)
+        timer.start()
+        try:
+            code, tail, better = read_whisper(proc, on_progress)
+        finally:
+            timed_out = not timer.is_alive()
+            timer.cancel()
+        if better is None:
+            if build["gpu"] and not code and not proc.on_card:  # e.g. the voice engine's CUDA files are missing
+                log.warning("Whisper's graphics card build ran on the processor: it couldn't use the card")
+            return code, tail, timed_out
+        log.info("Whisper started on the built-in graphics; using Vulkan device %s (the graphics card) from now on", better)
+        cfg["whisper_vk_device"] = better
+        config.save(cfg)
+    return code, tail, timed_out
 
 
 def whisper_words(result: dict) -> list[tuple[str, float, float]]:

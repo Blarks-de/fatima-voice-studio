@@ -108,14 +108,16 @@ class Transcripts:
         stem = folder / "whisper"
         model_path = Path(self.cfg["models_dir"]).resolve() / config.MODELS[model]["files"][0]
         result_file = stem.with_suffix(".json")
-        for exe, gpu in subtitles.whisper_builds(self.cfg):  # the GPU first; the processor if that fails
-            self._proc = subtitles.start_whisper(exe, gpu, model_path, wav, t["language"], stem,
-                                                 ["-tr"] if t["translate"] else [])
-            code, tail = subtitles.read_whisper(self._proc, lambda p: t.__setitem__("progress", p))
+        for build in subtitles.whisper_builds(self.cfg):  # the graphics card first; the processor if that fails
+            code, tail, _ = subtitles.run_build(
+                self.cfg, build, model_path, wav, t["language"], stem, 600 + t["seconds"] * 4,
+                lambda p: t.__setitem__("progress", p), ["-tr"] if t["translate"] else [],
+                on_start=lambda proc: setattr(self, "_proc", proc))
             self._proc = None
             if (not code and result_file.exists()) or t["id"] not in self.items:  # done, or deleted meanwhile
                 break
-            log.warning("Whisper (%s) failed for %s: %s", "GPU" if gpu else "CPU", t["name"], tail[-1:] or code)
+            log.warning("Whisper (%s) failed for %s: %s", "graphics card" if build["gpu"] else "CPU", t["name"],
+                        tail[-1:] or code)
             t["progress"] = 0
         if code or not result_file.exists():
             raise subtitles.WhisperError(runtime.load_problem(code)

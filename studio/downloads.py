@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 
-from . import config, hardware
+from . import config
 
 log = logging.getLogger("studio.downloads")
 
@@ -97,6 +97,8 @@ class Downloads:
             job["status"] = "done"
             log.info("Downloaded %s", key)
             m = config.MODELS[key]
+            if m["kind"] == "subtitles":
+                self.ensure_whisper_gpu()
             if m["kind"] == "voice" and self.cfg["default_model"] not in config.installed_models(self.cfg):
                 self.cfg["default_model"] = key  # first voice model: make it the default
                 config.save(self.cfg)
@@ -202,6 +204,7 @@ class Downloads:
             if self.cfg["engine"] not in config.installed_engines(self.cfg):  # first engine: use it
                 self.cfg["engine"] = key
                 config.save(self.cfg)
+            self.ensure_whisper_gpu()
         except asyncio.CancelledError:
             job["status"] = "cancelled"
         except Exception as e:
@@ -219,6 +222,49 @@ class Downloads:
     def delete_engine(self, key: str) -> None:
         self.discard_engine(key)
         shutil.rmtree(config.engine_dir(self.cfg, key), ignore_errors=True)
+        if key in config.WHISPER_GPU:  # its Whisper build can't run without it
+            shutil.rmtree(config.whisper_gpu_dir(key), ignore_errors=True)
+            self.jobs.pop("whisper-gpu:" + key, None)
+
+    # ---- Whisper on the graphics card (job key "whisper-gpu:<engine>") ----
+
+    def whisper_gpu(self) -> dict | None:
+        """Where Whisper runs: None with no graphics card engine in use, else that engine and its build's state."""
+        key = config.whisper_gpu_engine(self.cfg)
+        if not key:
+            return None
+        url, size, _ = config.WHISPER_GPU[key]
+        part = config.whisper_gpu_dir(key).parent / (url.rsplit("/", 1)[1] + ".part")
+        return {"engine": key, "label": config.ENGINES[key]["label"], "size": size,
+                "ready": (config.whisper_gpu_dir(key) / config.WHISPER_EXE).exists(),
+                "partial": part.stat().st_size if part.exists() else 0, "job": self.jobs.get("whisper-gpu:" + key)}
+
+    def ensure_whisper_gpu(self, retry: bool = False) -> None:
+        """Fetch Whisper's build for the graphics card engine in use, once there's a Whisper model to run. It happens
+        by itself (also after an update); a failed download waits for retry=True instead of trying in a loop."""
+        key = config.whisper_gpu_engine(self.cfg)
+        if not key or (config.whisper_gpu_dir(key) / config.WHISPER_EXE).exists() or self.busy("whisper-gpu:" + key):
+            return
+        if not any(config.MODELS[k]["kind"] == "subtitles" for k in config.installed_models(self.cfg)):
+            return
+        if not retry and (self.jobs.get("whisper-gpu:" + key) or {}).get("status") in ("failed", "cancelled"):
+            return
+        self._launch("whisper-gpu:" + key, self._run_whisper_gpu(key))
+
+    async def _run_whisper_gpu(self, key: str) -> None:
+        job = self.jobs["whisper-gpu:" + key]
+        job["total"] = config.WHISPER_GPU[key][1]
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30, read=300)) as client:
+                await self._install_zips(client, [config.WHISPER_GPU[key]], config.whisper_gpu_dir(key),
+                                         config.WHISPER_EXE, job)
+            job["status"] = "done"
+            log.info("Whisper now runs on the graphics card (%s)", key)
+        except asyncio.CancelledError:
+            job["status"] = "cancelled"
+        except Exception as e:
+            log.exception("Whisper for the graphics card (%s) failed to download", key)
+            job.update(status="failed", error=str(e) or e.__class__.__name__)
 
     # ---- tools (job key "tool:<id>"), e.g. ffmpeg for video files ----
 
@@ -231,7 +277,6 @@ class Downloads:
             # ffmpeg may also be on the PC already; other tools only count when the app has them
             source = ffmpeg_source() if key == "ffmpeg" else ("app" if (config.tool_dir(key) / t["exe"]).exists() else None)
             out.append({"key": key, "label": t["label"], "about": t["about"], "license": t["license"], "size": size,
-                        "available": t.get("needs") != "nvidia" or hardware.has_nvidia(),
                         "installed": source == "app", "on_pc": source == "system", "ready": bool(source),
                         "partial": part.stat().st_size if part.exists() else 0, "job": self.jobs.get("tool:" + key)})
         return out
@@ -248,10 +293,6 @@ class Downloads:
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30, read=300)) as client:
                 await self._install_zips(client, [t["zip"]], config.tool_dir(key), t["exe"], job)
-            if t.get("keep"):  # only what the app runs (the CUDA Whisper zip also has demos and tests)
-                for f in config.tool_dir(key).iterdir():
-                    if f.is_file() and not any(f.match(k) for k in t["keep"]):
-                        f.unlink()
             job["status"] = "done"
         except asyncio.CancelledError:
             job["status"] = "cancelled"

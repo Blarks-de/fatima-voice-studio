@@ -90,6 +90,7 @@ def create_app(cfg: dict) -> FastAPI:
         tasks = [asyncio.create_task(worker.run()), asyncio.create_task(updater.watch()),
                  asyncio.create_task(transcripts.run())]
         log.info("%s on http://%s:%s  (batches: %s)", APP_NAME, cfg["host"], cfg["port"], store.root)
+        downloads.ensure_whisper_gpu()  # e.g. after an update: Whisper's graphics card build, if it's missing
         if mcp:
             async with mcp.session_manager.run():  # MCP endpoint for AI agents at /mcp
                 yield
@@ -252,7 +253,7 @@ def create_app(cfg: dict) -> FastAPI:
             "api_base": f"http://{cfg['host']}:{cfg['port']}/v1",
             "current": {"batch": cur[0]["id"], "item": cur[1]["id"], "text": cur[1]["text"][:120]} if cur else None,
             "finishing": {"batch": fin[0]["id"], "script": fin[1]["n"], "progress": worker.finish_progress,
-                          "gpu": bool(subtitles.whisper_builds(cfg)) and subtitles.whisper_builds(cfg)[0][1]} if fin else None,
+                          "gpu": next(iter(subtitles.whisper_builds(cfg)), {}).get("gpu", False)} if fin else None,
             "api_busy": worker.api_busy,
             "queue": [b["id"] for b in sorted(store.batches.values(), key=lambda b: b["order"])
                       if batch_status(b) in ("running", "queued", "paused", "finishing")],
@@ -1044,6 +1045,7 @@ def create_app(cfg: dict) -> FastAPI:
                                     "enough_disk": free is None or models[k]["installed"] or free > models[k]["to_download"] + 5e8}
                        for k in config.MODELS],
             "benchmark": cfg.get("benchmark"),
+            "whisper_gpu": downloads.whisper_gpu(),
             "steps": {"engine": eng in installed_eng, "model": cfg["default_model"] in config.installed_models(cfg),
                       "subtitles": subtitles.whisper_available(cfg), "voice": bool(voices.list()),
                       "benchmark": bool(cfg.get("benchmark"))},
@@ -1090,6 +1092,7 @@ def create_app(cfg: dict) -> FastAPI:
                 cfg["engine"] = key  # the next segment runs on it
                 cfg.pop("benchmark", None)  # the speed was measured on the old engine
                 config.save(cfg)
+                downloads.ensure_whisper_gpu()  # Whisper follows the engine onto its graphics card
         elif action == "remove":
             if key == cfg["engine"]:
                 raise HTTPException(409, "That engine is in use. Switch to another one first.")
@@ -1097,6 +1100,23 @@ def create_app(cfg: dict) -> FastAPI:
         else:
             raise HTTPException(404, "Unknown action")
         return setup_state()
+
+    @app.get("/api/whisper-gpu")
+    def whisper_gpu():
+        return downloads.whisper_gpu()
+
+    @app.post("/api/whisper-gpu/{action}")
+    def whisper_gpu_action(action: str):
+        """retry: download Whisper's graphics card build again after a failure; cancel: pause it."""
+        if action == "retry":
+            downloads.ensure_whisper_gpu(retry=True)
+        elif action == "cancel":
+            key = config.whisper_gpu_engine(cfg)
+            if key:
+                downloads.cancel("whisper-gpu:" + key)
+        else:
+            raise HTTPException(404, "Unknown action")
+        return downloads.whisper_gpu()
 
     @app.post("/api/setup/benchmark")
     async def benchmark():

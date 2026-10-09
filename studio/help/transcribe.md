@@ -34,8 +34,8 @@ took.
 | **Whisper large-v3** | The most accurate, and the slowest. |
 
 Download them on the **Models** page, under *Subtitles and transcripts*. They run on the processor (CPU), or on
-an NVIDIA graphics card with **Whisper on NVIDIA** (Models page, *Tools*): a 26-minute recording in under a
-minute. See [Setup and models](setup-and-models.md#whisper-on-nvidia-graphics-card).
+your graphics card when the voice engine uses one (CUDA or Vulkan): a 26-minute recording in under a minute. See
+[Setup and models](setup-and-models.md#whisper-on-the-graphics-card).
 
 ## Video files need ffmpeg
 

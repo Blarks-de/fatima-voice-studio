@@ -5,7 +5,7 @@ import os
 import secrets
 from pathlib import Path
 
-from . import APP_NAME
+from . import APP_NAME, REPO_URL
 
 ROOT = Path(__file__).resolve().parent.parent  # the code
 # The installer drops an "installed" marker next to the code. An installed copy keeps models, engine, voices
@@ -87,12 +87,23 @@ ENGINES = {
 }
 ENGINE_EXE = "llama-tts.exe"
 
-# whisper.cpp. The CPU build works on every PC and comes with the first Whisper model; on an NVIDIA card the
-# CUDA build (a tool on the Models page, "whisper-cuda") is used instead when downloaded: about 8x faster.
+# whisper.cpp. The CPU build works on every PC and comes with the first Whisper model. With a graphics card voice
+# engine, Whisper runs on the card too (WHISPER_GPU below): 8-10x faster, and the PC stays free.
 WHISPER_RELEASE = "b5454"
 WHISPER_ZIP = (f"https://github.com/ggml-org/whisper.cpp/releases/download/{WHISPER_RELEASE}/whisper-bin-x64.zip",
                8928640, "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb")
 WHISPER_EXE = "whisper-cli.exe"
+
+# Whisper on the graphics card: our builds of the same whisper.cpp, one per graphics card voice engine (made by
+# .github/workflows/whisper.yml, release "whisper-b5454"). The CUDA ones load cuBLAS/cudart from that engine's
+# folder, so nothing of NVIDIA's is downloaded twice; Vulkan needs only the graphics driver. Fetched by themselves
+# once the engine and a Whisper model are there. (url, size, sha256)
+_WGPU = f"{REPO_URL}/releases/download/whisper-{WHISPER_RELEASE}/whisper-{WHISPER_RELEASE}-win-"
+WHISPER_GPU = {
+    "cuda": (_WGPU + "cuda-13.4-x64.zip", 137475345, "016a4d6c99b6afa346dd89838ceec13cb72c80e2c7a6ab8d72612f3db1189326"),
+    "cuda12": (_WGPU + "cuda-12.4-x64.zip", 258606838, "cd3b99a09b0472b4df2f5ada5f0ebfdfecd875aaacac805372ba667fcfc904f2"),
+    "vulkan": (_WGPU + "vulkan-x64.zip", 18205922, "578fe45668a82df43c7b4e850cc8b7e625ad3d07be1ae7dc8b0e376406ae0d7e"),
+}
 
 
 def engine_dir(cfg: dict, key: str | None = None) -> Path:
@@ -101,6 +112,16 @@ def engine_dir(cfg: dict, key: str | None = None) -> Path:
 
 def whisper_dir() -> Path:
     return HOME / "engine" / "whisper"
+
+
+def whisper_gpu_dir(engine: str) -> Path:
+    return HOME / "engine" / f"whisper-gpu-{engine}"
+
+
+def whisper_gpu_engine(cfg: dict) -> str | None:
+    """The voice engine whose graphics card Whisper uses: the one in use, if it's a graphics card engine and installed."""
+    key = cfg["engine"]
+    return key if key in WHISPER_GPU and (engine_dir(cfg, key) / ENGINE_EXE).exists() else None
 
 
 def installed_engines(cfg: dict) -> list[str]:
@@ -141,19 +162,7 @@ TOOLS = {
                "license": "GPL v3 — a separate program; using it doesn't affect your audio",
                "zip": ("https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-essentials_build.zip",
                        114768076, "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba")},
-    # Same release as the CPU build. Made with CUDA 12.4; newer cards (RTX 50) run it too, the driver translates
-    # it once on first use. Only whisper-cli and the libraries it loads are kept (1.1 GB, mostly NVIDIA's cuBLAS).
-    "whisper-cuda": {"label": "Whisper on NVIDIA (graphics card)", "exe": "whisper-cli.exe", "needs": "nvidia",
-                     "about": "Subtitles and transcripts on your NVIDIA graphics card instead of the processor: about 8x "
-                              "faster (a 26-minute script in under a minute), and the PC stays free. Used automatically "
-                              "once downloaded.",
-                     "license": "MIT, with NVIDIA's CUDA libraries",
-                     "zip": (f"https://github.com/ggml-org/whisper.cpp/releases/download/{WHISPER_RELEASE}/whisper-bin-win-cuda-12.4.0-x64.zip",
-                             684913404, "afef0b881c500958921c3f5523b50e59ee2ec9b6f5cbd25b324c51ed308a957a"),
-                     "keep": ["whisper-cli.exe", "whisper.dll", "ggml*.dll", "cublas64_12.dll", "cublasLt64_12.dll",
-                              "cudart64_12.dll"]},
 }
-WHISPER_GPU = "whisper-cuda"
 
 
 def tool_dir(key: str) -> Path:
@@ -184,13 +193,13 @@ MODELS = {
     "whisper-base": {
         "kind": "subtitles", "label": "Whisper base", "short": "Subtitles · fastest", "api_id": "whisper-base",
         "files": ["ggml-base-q5_1.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-base",
-        "about": "The smallest and quickest: about 24× faster than real time on an Intel Core Ultra 9, and as good as small "
-                 "for timing clear English narration. Less sure of other languages."},
+        "about": "The smallest, and the quickest on the processor (about 24× faster than real time on an Intel Core "
+                 "Ultra 9). As good as small for timing clear English narration; less sure of other languages."},
     "whisper-small": {
         "kind": "subtitles", "label": "Whisper small", "short": "Subtitles · fast", "api_id": "whisper-small",
         "files": ["ggml-small-q5_1.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-small",
-        "about": "Times the subtitles (SRT) of every finished script. Runs on the CPU, about 10× faster than real time "
-                 "on an Intel Core Ultra 9. Plenty for subtitles in all 10 languages."},
+        "about": "Times the subtitles (SRT) of every finished script. Plenty for subtitles in all 10 languages, and "
+                 "quick on the processor too (about 10× faster than real time on an Intel Core Ultra 9)."},
     "whisper-medium": {
         "kind": "subtitles", "label": "Whisper medium", "short": "Transcripts · more accurate", "api_id": "whisper-medium",
         "files": ["ggml-medium-q5_0.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-medium",
@@ -198,11 +207,13 @@ MODELS = {
     "whisper-turbo": {
         "kind": "subtitles", "label": "Whisper large-v3 turbo", "short": "Transcripts · accurate and quick", "api_id": "whisper-large-v3-turbo",
         "files": ["ggml-large-v3-turbo-q5_0.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-large-v3-turbo",
-        "about": "Close to large-v3 accuracy at a fraction of the work. A good choice for transcribing audio you didn't write."},
+        "about": "Close to large-v3 accuracy at a fraction of the work. On a graphics card it's the best pick for "
+                 "everything: a 26-minute script in about 40 seconds. Also good for transcribing audio you didn't write."},
     "whisper-large": {
         "kind": "subtitles", "label": "Whisper large-v3", "short": "Transcripts · most accurate", "api_id": "whisper-large-v3",
         "files": ["ggml-large-v3-q5_0.bin"], "license": "MIT — commercial use OK", "page": HF + "openai/whisper-large-v3",
-        "about": "The most accurate Whisper, and the slowest on the CPU. For hard audio: accents, noise, music underneath."},
+        "about": "The most accurate Whisper, and the slowest (very slow on the processor). For hard audio: accents, "
+                 "noise, music underneath."},
 }
 MODELS["uvr-vocals"] = {
     "kind": "separation", "label": "Voice separator (UVR MDX-Net)", "short": "Separates a voice from music",

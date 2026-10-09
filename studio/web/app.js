@@ -1122,17 +1122,39 @@ $('found-list').addEventListener('click', run(async (e) => {
 async function loadModels() {
   let models;
   try { models = await api('/api/models'); } catch (e) { toast(e.message); return; }
-  const group = (kind, title, help) => `<div class="group-title">${title}</div><p class="help" style="margin:-6px 0 12px">${help}</p>`
+  const group = (kind, title, help, extra = '') => `<div class="group-title">${title}</div><p class="help" style="margin:-6px 0 12px">${help}</p>${extra}`
     + models.filter((m) => m.kind === kind).map(modelCard).join('');
-  const tools = await api('/api/tools');
+  const [tools, wg] = await Promise.all([api('/api/tools'), api('/api/whisper-gpu').catch(() => null)]);
   setHtml($('models-list'), group('voice', 'Voice models', 'Speak your scripts. Each runs on the engine chosen on the Setup page.')
-    + group('subtitles', 'Subtitles and transcripts', 'Time the SRT subtitles of every finished script, and power the Transcribe page and the transcription API. They run on the processor, or on an NVIDIA graphics card with <b>Whisper on NVIDIA</b> under Tools below: much faster.')
+    + group('subtitles', 'Subtitles and transcripts', 'Time the SRT subtitles of every finished script, and power the Transcribe page and the transcription API. They run on your graphics card with a CUDA or Vulkan engine, otherwise on the processor.', whisperWhere(wg, models.some((m) => m.kind === 'subtitles' && m.installed)))
     + group('separation', 'Voice separator', 'Takes a voice out of music or background sound when you add a voice from a video or a song.')
-    + `<div class="group-title">Tools</div><p class="help" style="margin:-6px 0 12px">Extra programs: ffmpeg for video files, and Whisper for NVIDIA graphics cards.</p>`
-    + tools.filter((t) => t.available).map(toolCard).join(''));
+    + `<div class="group-title">Tools</div><p class="help" style="margin:-6px 0 12px">Programs the app uses for some file types.</p>`
+    + tools.map(toolCard).join(''));
   const busy = (j) => j && ['downloading', 'checking', 'installing'].includes(j.status);
-  if (models.some((m) => busy(m.job)) || tools.some((t) => busy(t.job))) setTimeout(() => S.view === 'models' && loadModels(), 1000);
+  if (models.some((m) => busy(m.job)) || tools.some((t) => busy(t.job)) || busy(wg?.job)) setTimeout(() => S.view === 'models' && loadModels(), 1000);
 }
+// Where Whisper runs, under the subtitles models: on the graphics card of the voice engine in use (its build comes
+// by itself once there's a Whisper model), or on the processor.
+function whisperWhere(wg, haveModel) {
+  const line = (html) => `<div class="whisper-where">${html}</div>`;
+  if (!wg) return line(`${icon('cpu')}<span>Whisper runs on the <b>processor</b>. With a graphics card engine on <a href="#setup">Setup</a> (CUDA or Vulkan) it runs on the card, many times faster.</span>`);
+  const j = wg.job;
+  if (j && ['downloading', 'checking', 'installing'].includes(j.status)) {
+    const pct = j.total ? Math.min(100, 100 * j.done / j.total) : 0;
+    const label = j.status === 'downloading' ? `${fmtSize(j.done)} of ${fmtSize(j.total)}` : j.status === 'checking' ? 'Checking…' : 'Installing…';
+    return line(`${icon('download')}<span style="flex:1">Getting Whisper ready for your graphics card (${esc(wg.label)}) · ${label}<div class="progress live" style="margin-top:6px"><div style="width:${pct}%"></div></div></span><button class="text-btn red" data-wg="cancel">Pause</button>`);
+  }
+  if (wg.ready) return line(`${icon('check')}<span>Whisper runs on your <b>graphics card</b> (${esc(wg.label)}), whichever model you pick. Large-v3 turbo is the most accurate there, and quick.</span>`);
+  if (j && ['failed', 'cancelled'].includes(j.status)) {
+    return line(`${icon('alert')}<span style="flex:1">${j.status === 'failed' ? `Whisper's graphics card part didn't download: ${esc(j.error || '')}` : 'Paused.'} Until then it runs on the processor.</span><button class="btn sm" data-wg="retry">${icon('refresh')} ${j.status === 'failed' ? 'Try again' : 'Resume'}</button>`);
+  }
+  return line(`${icon('cpu')}<span>${haveModel ? 'Whisper runs on the processor for now.' : 'Download a Whisper model:'} It will run on your <b>graphics card</b> (${esc(wg.label)}), with a one-time ${fmtSize(wg.size - (wg.partial || 0))} download that starts by itself.</span>`);
+}
+document.addEventListener('click', run(async (e) => {
+  const b = e.target.closest('[data-wg]'); if (!b) return;
+  await api(`/api/whisper-gpu/${b.dataset.wg}`, { method: 'POST' });
+  setTimeout(() => (S.view === 'setup' ? loadSetup() : loadModels()), 300);
+}));
 function dlBox(job, total, partial, kind, key) {
   if (job && ['downloading', 'checking', 'installing'].includes(job.status)) {
     const pct = job.total ? Math.min(100, 100 * job.done / job.total) : 0;
@@ -1148,18 +1170,15 @@ function toolCard(t) {
   else if (t.installed) acts = `<span class="chip ok">${icon('check')} Downloaded</span><button class="btn sm" data-t="remove" data-key="${t.key}">Remove</button>`;
   else if (t.on_pc) acts = `<span class="chip ok">${icon('check')} Already on this PC</span>`;
   else acts = `<button class="btn sm accent" data-t="download" data-key="${t.key}">${icon('download')} Download ${fmtSize(t.size - t.partial)}</button>`;
-  if (t.installed && !busy) acts = acts.replace('data-t="remove"', `data-t="remove" data-label="${esc(t.label)}"`);
   return `<div class="card mcard"><div class="main"><div class="name">${esc(t.label)} <span class="license ok">${esc(t.license)}</span></div>
       <div class="about">${esc(t.about)}</div>${t.job?.status === 'failed' ? `<div class="err-note">${esc(t.job.error)}</div>` : ''}</div>
     <div class="acts">${acts}</div></div>`;
 }
 document.addEventListener('click', run(async (e) => {
   const b = e.target.closest('[data-t]'); if (!b) return;
-  const what = b.dataset.key === 'ffmpeg' ? 'Video files can no longer be read until you download it again.'
-    : 'Subtitles and transcripts go back to the processor (slower) until you download it again.';
-  if (b.dataset.t === 'remove' && !await confirmDialog(`Remove ${b.dataset.label || b.dataset.key}?`, what, 'Remove')) return;
+  if (b.dataset.t === 'remove' && !await confirmDialog('Remove ffmpeg?', 'Video files can no longer be read until you download it again.', 'Remove')) return;
   await api(`/api/tools/${b.dataset.key}/${b.dataset.t}`, { method: 'POST' });
-  setTimeout(() => (S.view === 'setup' ? loadSetup() : loadModels()), 300);
+  setTimeout(loadModels, 300);
 }));
 
 function modelCard(m) {
@@ -1213,7 +1232,6 @@ async function loadSetup(refresh = false) {
   }).join('');
   const voiceModels = s.models.filter((m) => m.kind === 'voice').map(modelCard).join('');
   const subModels = s.models.filter((m) => m.kind === 'subtitles').map(modelCard).join('');
-  const gpuWhisper = (await api('/api/tools').catch(() => [])).find((t) => t.key === 'whisper-cuda' && t.available);
   const b = s.benchmark;
   const html = `
     <div class="card hw">
@@ -1227,9 +1245,10 @@ async function loadSetup(refresh = false) {
     ${engines}
     ${stepHead(2, s.steps.model, 'Voice model', 'Speaks your scripts. Both versions are free for commercial use.')}
     ${voiceModels}
-    ${stepHead(3, s.steps.subtitles, 'Subtitles <span class="opt" style="font-weight:400;font-size:14px;color:var(--muted)">— recommended</span>', gpuWhisper ? 'Times the SRT subtitles for your videos. With <b>Whisper on NVIDIA</b> (below) it runs on your graphics card, many times faster than on the processor; large-v3 turbo is then both the most accurate and the quickest.'
-      : 'Times the SRT subtitles for your videos, on the processor. Small is plenty for subtitles; the bigger ones are more accurate for transcribing other audio.')}
-    ${subModels}${gpuWhisper ? toolCard(gpuWhisper) : ''}
+    ${stepHead(3, s.steps.subtitles, 'Subtitles <span class="opt" style="font-weight:400;font-size:14px;color:var(--muted)">— recommended</span>', s.whisper_gpu ? 'Times the SRT subtitles for your videos.'
+      : 'Times the SRT subtitles for your videos. Small is plenty for subtitles; the bigger ones are more accurate for transcribing other audio.')}
+    ${whisperWhere(s.whisper_gpu, s.models.some((m) => m.kind === 'subtitles' && m.installed))}
+    ${subModels}
     ${stepHead(4, s.steps.voice, 'A voice', s.steps.voice ? 'You have voices in your library.' : 'Add a 6–15 second clip of a voice, or find a new one.')}
     ${s.ready ? `<a class="btn ${s.steps.voice ? '' : 'accent'}" href="#voices">${icon('users')} Open Voices</a>` : '<p class="help">Available once the engine and a voice model are downloaded.</p>'}
     ${stepHead(5, s.steps.benchmark, 'Speed test', 'Speaks a short paragraph to measure how fast this PC is.')}
@@ -1240,7 +1259,7 @@ async function loadSetup(refresh = false) {
   setHtml($('setup-body'), html);
   const busy = s.engines.some((e) => e.job && ['downloading', 'checking', 'installing'].includes(e.job.status))
     || s.models.some((m) => m.job && ['downloading', 'checking', 'installing'].includes(m.job.status))
-    || ['downloading', 'checking', 'installing'].includes(gpuWhisper?.job?.status);
+    || ['downloading', 'checking', 'installing'].includes(s.whisper_gpu?.job?.status);
   if (busy) setTimeout(() => S.view === 'setup' && loadSetup(), 1000);
 }
 $('setup-refresh').addEventListener('click', () => loadSetup(true));

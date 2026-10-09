@@ -49,8 +49,8 @@ graphics card.
 ## Whisper models (subtitles and transcripts)
 
 Whisper listens to the finished audio to time the subtitles, checks that every part was read, and powers the
-[Transcribe](transcribe.md) page. It runs on the processor, or on an NVIDIA graphics card once you download
-**Whisper on NVIDIA** (see below).
+[Transcribe](transcribe.md) page. With a graphics card engine it runs on the card, otherwise on the processor
+(see below).
 
 | Model | Notes | Download |
 |---|---|---|
@@ -64,18 +64,29 @@ When you have more than one, choose which one is used with **Use this one** on t
 **Settings → Files**. Your subtitles always use your script's own words; Whisper only times them, so *small* is
 plenty for subtitles.
 
-### Whisper on NVIDIA (graphics card)
+### Whisper on the graphics card
 
-On a PC with an NVIDIA card, Setup (step 3) and the Models page (under *Tools*) offer **Whisper on NVIDIA**, a
-one-time download of 653 MB (1.1 GB once installed, mostly NVIDIA's own libraries). Once it's there, subtitles and
-transcripts run on the graphics card by themselves, about 8× faster than on the processor: a 26-minute script is
-subtitled in under a minute instead of about 6½. The PC also stays free while it works.
+Whisper runs on the same graphics card as the voice, every model, with nothing to set up:
 
-- On the graphics card, **large-v3 turbo** is both the most accurate and the quickest, so pick it.
-- The very first run after the download takes a little longer (the driver prepares the card once).
-- If the graphics card can't run it for any reason, the app quietly uses the processor instead.
-- Without an NVIDIA card (AMD, Intel or none), Whisper runs on the processor, at low priority, so the rest of the
-  PC stays usable.
+| Engine in use (step 1) | Whisper runs on | One-time extra download |
+|---|---|---|
+| **NVIDIA · CUDA** | the NVIDIA card | 131 MB |
+| **NVIDIA · CUDA (older driver)** | the NVIDIA card | 247 MB |
+| **AMD / Intel · Vulkan** | the AMD, Intel or NVIDIA card | 17 MB |
+| **CPU only** | the processor | none |
+
+That extra part of Whisper downloads by itself once you have the engine and a Whisper model (also after an update);
+step 3 on Setup and the Models page show its progress, and then *Whisper runs on your graphics card*. Your Whisper
+models aren't downloaded again: they're the same for the processor and the card. It uses the engine's own NVIDIA
+files, so nothing big is downloaded twice.
+
+On a graphics card, a 26-minute script is subtitled in about 40 seconds instead of about 6½ minutes, and the PC stays
+free. **Large-v3 turbo** is then both the most accurate model and a quick one, so pick it.
+
+- Laptops often have two graphics chips: one built into the processor and the real graphics card. Whisper uses the
+  graphics card; the first time, it may start on the built-in chip and switch over by itself.
+- If the graphics card can't run Whisper for any reason, the app uses the processor instead.
+- On the processor, Whisper runs at low priority on half the threads, so the rest of the PC stays usable.
 
 ## Voice separator
 

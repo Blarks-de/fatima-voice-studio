@@ -61,6 +61,7 @@ and checks each file against its published SHA-256.
 | llama.cpp engine (`llama-tts`), incl. ggml | MIT | https://github.com/ggml-org/llama.cpp |
 | NVIDIA CUDA runtime (in the CUDA engine downloads) | NVIDIA CUDA EULA | redistributed by llama.cpp |
 | whisper.cpp (`whisper-cli`), incl. ggml | MIT | https://github.com/ggml-org/whisper.cpp |
+| whisper.cpp graphics card builds (CUDA 13.4, CUDA 12.4, Vulkan), built by this project from the same source | MIT | https://github.com/hassanxs/fatima-voice-studio/releases/tag/whisper-b5454 (they use the CUDA files of the engine download) |
 | Qwen3-TTS 12Hz 1.7B Base (GGUF, Q8 and Q4) | Apache 2.0 | https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base, GGUF by ggml-org |
 | Whisper base, small, medium, large-v3 turbo, large-v3 (ggml) | MIT | https://huggingface.co/openai, ggml by ggerganov |
 | UVR MDX-Net Voc_FT voice separator (ONNX) | MIT (Ultimate Vocal Remover) | https://github.com/Anjok07/ultimatevocalremovergui, ONNX by k2-fsa/sherpa-onnx |

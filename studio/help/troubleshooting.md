@@ -66,8 +66,9 @@ The model download may be damaged. On the Models page, **Remove** the model and 
 That's Whisper timing the subtitles. On the processor, a long script with a big Whisper model takes minutes (a
 26-minute script with large-v3 turbo: about 6½). The top bar shows its progress and where it runs.
 
-- On an NVIDIA card, download **Whisper on NVIDIA** (Setup, step 3, or Models → Tools): the same script then takes
-  under a minute.
+- With a graphics card, use a graphics card engine on **Setup** (NVIDIA · CUDA, or Vulkan for AMD and Intel):
+  Whisper then runs on the card too, and the same script takes under a minute. Step 3 on Setup shows where Whisper
+  runs, and whether its graphics card part is still downloading or needs **Try again**.
 - Without one, pick **Whisper small** in **Settings → Files → Whisper model**: plenty for subtitles, since they
   use your script's own words.
 

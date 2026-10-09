@@ -341,6 +341,10 @@ select.mini { height: 26px; max-width: 150px; padding: 0 6px; border: 1px solid 
 .mcard .about { font-size: 13px; color: var(--muted); }
 .mcard .meta { font: 11px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .mcard .acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; min-width: 220px; }
+.whisper-where { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 12px; border-radius: var(--r-card);
+  background: var(--well); font-size: 13px; line-height: 1.45; }
+.whisper-where > svg.i { color: var(--accent); width: 18px; height: 18px; }
+.step + .whisper-where { margin-top: 4px; }
 .dl { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
 .dl .progress { height: 5px; }
 .hw { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; padding: 20px; }

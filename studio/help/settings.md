@@ -32,7 +32,7 @@ Every change on the Settings page is saved as soon as you make it.
 | Setting | What it does | Default |
 |---|---|---|
 | **Files for each finished script** | WAV, MP3 and Subtitles (SRT). | all three |
-| **Whisper model** | Which Whisper times subtitles and makes transcripts. *Best one downloaded* picks the most accurate you have. With **Whisper on NVIDIA** it runs on the graphics card, where large-v3 turbo is the best pick; on the processor, small is quicker. | Best one downloaded |
+| **Whisper model** | Which Whisper times subtitles and makes transcripts. *Best one downloaded* picks the most accurate you have. With a graphics card engine it runs on the card, where large-v3 turbo is the best pick; on the processor, small is quicker. | Best one downloaded |
 | **Loudness (LUFS)** | How loud finished files are. −16 suits voiceovers; YouTube plays at about −14. | −16 |
 | **MP3 quality (kbps)** | Higher is better and bigger. 192 is very good for voice. | 192 |
 
