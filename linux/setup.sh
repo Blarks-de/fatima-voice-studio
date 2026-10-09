@@ -17,8 +17,31 @@ for a in "$@"; do
   esac
 done
 
+# Oldest llama.cpp build with Qwen3-TTS support (4 Aug 2026). Older llama-tts builds take a different command line.
+# Keep in step with the flags engine.py passes (linux/test_smoke.py lists them).
+LLAMA_MIN_BUILD=10270
+
 ok()   { printf '  \033[32mok\033[0m    %s\n' "$*"; }
 warn() { printf '  \033[33mfehlt\033[0m %s\n' "$*"; }
+
+# Finds llama-tts the way compat.py does (FVS_LLAMA_TTS first, then PATH) and checks that it is new enough.
+check_llama_tts() {
+  local tts="${FVS_LLAMA_TTS:-$(command -v llama-tts || true)}" build
+  if [ -z "$tts" ]; then
+    warn "llama-tts (the speech engine): install llama.cpp with CUDA/Vulkan (Arch: llama.cpp-cuda or llama.cpp-vulkan), or set FVS_LLAMA_TTS"
+    return 0
+  fi
+  ok "llama-tts: $tts"
+  # "llama-tts --version" prints "version: <build> (<commit>)" among other lines
+  build="$("$tts" --version 2>&1 | sed -n 's/^version: b\{0,1\}\([0-9][0-9]*\).*/\1/p' | head -n 1 || true)"
+  if [ -z "$build" ]; then
+    warn "llama-tts: couldn't read the build number from '$tts --version'. The app needs llama.cpp b$LLAMA_MIN_BUILD or newer."
+  elif [ "$build" -lt "$LLAMA_MIN_BUILD" ]; then
+    warn "llama-tts is llama.cpp b$build, but the app needs b$LLAMA_MIN_BUILD or newer (older builds take a different command line). Update llama.cpp."
+  else
+    ok "llama.cpp b$build (b$LLAMA_MIN_BUILD or newer needed)"
+  fi
+}
 
 # 1. Python environment (3.11-3.13: sherpa-onnx and lameenc have no wheels for newer versions yet)
 if ! command -v uv >/dev/null; then echo "uv is required (pacman -S uv)." >&2; exit 1; fi
@@ -36,8 +59,7 @@ uv pip install --python .venv/bin/python 'pygobject>=3.50' 2>/dev/null \
 
 # 2. External tools
 echo "Checking tools:"
-if command -v llama-tts >/dev/null || [ -n "${FVS_LLAMA_TTS:-}" ]; then ok "llama-tts: $(command -v llama-tts || echo "$FVS_LLAMA_TTS")"
-else warn "llama-tts (the speech engine): install llama.cpp with CUDA/Vulkan (Arch: llama.cpp-cuda or llama.cpp-vulkan), or set FVS_LLAMA_TTS"; fi
+check_llama_tts
 if [ -x bin/whisper-cli ] || command -v whisper-cli >/dev/null || [ -n "${FVS_WHISPER_CLI:-}" ]; then ok "whisper-cli: $([ -x bin/whisper-cli ] && echo "$here/bin/whisper-cli" || command -v whisper-cli || echo "$FVS_WHISPER_CLI")"
 else warn "whisper-cli (subtitles, transcripts): run ./build-whisper.sh (the Arch package whisper-cpp conflicts with llama.cpp-cuda). Without it speech works, subtitles don't."; fi
 if command -v ffmpeg >/dev/null; then ok "ffmpeg"; else warn "ffmpeg (video files, MP3/M4A input): sudo pacman -S ffmpeg"; fi

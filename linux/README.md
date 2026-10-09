@@ -49,8 +49,9 @@ installiert (baut aus dem Quellcode: `gobject-introspection`, `cairo`, `pkgconf`
 | `notify-send` | Benachrichtigung, wenn ein Batch fertig ist | `libnotify` |
 | `wl-copy`/`xclip`/`xsel` | Zwischenablage im Tray-Menü | `wl-clipboard` / `xclip` |
 
-Das `llama-tts` muss Qwen3-TTS können. Geprüft ist b10689; die Windows-Version der App ist auf b11476 gepinnt.
-Läuft ein Modell nicht, zuerst `llama-tts` aktualisieren.
+Das `llama-tts` muss Qwen3-TTS können: mindestens **b10270** (4. Aug 2026), ältere Builds haben eine andere
+Kommandozeile. Geprüft ist b10689; die Windows-Version der App ist auf b11476 gepinnt. `setup.sh` warnt, wenn das
+`llama-tts` älter ist (`LLAMA_MIN_BUILD` am Anfang des Skripts). Läuft ein Modell nicht, zuerst `llama-tts` aktualisieren.
 
 Python 3.14 geht nicht (für `sherpa-onnx`/`lameenc` gibt es noch keine Wheels), deshalb legt `setup.sh` das venv
 mit 3.13 an.
@@ -143,7 +144,16 @@ cd ~/fatima-voice-studio && git pull        # Upstream übernehmen
 linux/setup.sh                              # falls sich requirements.txt geändert hat
 ```
 
-Nach einem Upstream-Update prüfen: `linux/fatima-voice-studio --check`. Die Schicht hängt an diesen Namen in
-`studio/`: `config` (HOME, DATA, DEFAULTS, ENGINES …), `hardware` (`_registry_gpus`, `_ram_gb`, `_cpu`,
-`on_battery`), `autostart`, `updater.Updater`, `studio.trash`, `studio.winui`, `tray.copy`. Ändert Upstream
-die, muss `compat.py` angepasst werden.
+Nach einem Upstream-Update prüfen: `linux/fatima-voice-studio --check` und den Smoke-Test:
+
+```bash
+.venv/bin/python linux/test_smoke.py        # oder: .venv/bin/python -m pytest linux/test_smoke.py
+```
+
+Die Schicht hängt an diesen Namen in `studio/`: `config` (HOME, DATA, DEFAULTS, ENGINES …), `hardware`
+(`_registry_gpus`, `_ram_gb`, `_cpu`, `on_battery`), `autostart`, `updater.Updater`, `studio.trash`, `studio.winui`,
+`tray.copy`. Der Test prüft, dass es sie noch gibt und dass `compat.py` sie tatsächlich ersetzt (auch dort, wo
+`app.py`, `store.py` & Co. sie per `from … import` binden), außerdem die `llama-tts`-Kommandozeile aus `engine.py`
+und den Wortlaut der Weboberfläche. Er braucht weder GPU noch `llama-tts` noch Display (der Tray-Test wird ohne
+Display übersprungen) und schreibt nur in einen temporären Ordner. Schlägt er an, muss `compat.py` angepasst
+werden, oder Upstream baut einen Hook.
