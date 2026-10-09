@@ -39,7 +39,7 @@ doesn't help, remove the engine and download it again on the **Setup** page.
 
 - Close other programs that use the graphics card: games, video editors, other AI apps, many browser tabs with video.
 - Use the smaller **Qwen3-TTS 1.7B · Q4** voice model: download it on the Models page and pick it in
-  **Settings → General → Defaults for new scripts → Voice model**.
+  **Settings → Defaults for new scripts → Voice model**.
 
 ### The NVIDIA engine won't start, or Setup says the driver is too old
 
@@ -153,5 +153,8 @@ come from git instead. You can always install a new version by running its insta
 
 1. Open the log: **Settings → Folders → Logs**. `studio.log` (the app) and `engine.log` (the engine) say what went wrong, in more
    detail than the page.
-2. Open an issue on [GitHub](https://github.com/hassanxs/fatima-voice-studio/issues) with what you did, what you
-   expected, what happened, your Windows version and graphics card, and the end of the log. Don't post your API key.
+2. Open **About** (in the menu at the top right) and click **Copy details**: your version, Windows, graphics card,
+   engine and models, ready to paste.
+3. Open an issue on [GitHub](https://github.com/hassanxs/fatima-voice-studio/issues) (**Report a problem** on the
+   About page) with what you did, what you expected, what happened, the details you copied, and the end of the
+   log. Don't post your API key.

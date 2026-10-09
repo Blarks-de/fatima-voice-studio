@@ -1,9 +1,11 @@
 # Settings
 
-Click **Settings** at the top for a small menu: **General** (this page), **Pronunciation** (see
-[Pronunciation](pronunciation.md)) and **Setup** (see [Setup and models](setup-and-models.md)).
+Open the menu button at the top right (the sliders icon, next to **?**). Its menu has **Settings** (this page), **Pronunciation** (see
+[Pronunciation](pronunciation.md)), **Models** and **Setup** (see [Setup and models](setup-and-models.md)),
+**Connect** (see [Connect](connect.md)) and **About**: the version, the licences, and your PC's details to copy
+into a problem report.
 
-Every change on the General page is saved as soon as you make it.
+Every change on the Settings page is saved as soon as you make it.
 
 ## Defaults for new scripts
 

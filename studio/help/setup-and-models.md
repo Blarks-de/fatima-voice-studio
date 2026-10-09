@@ -1,7 +1,7 @@
 # Setup and models
 
 The app itself is small. The parts that do the work are downloaded once, on the **Setup** and **Models** pages,
-and then run offline. Setup is under **Settings → Setup** at the top.
+and then run offline. Both are in the menu button at the top right (the sliders icon, next to **?**).
 
 ## The Setup page
 

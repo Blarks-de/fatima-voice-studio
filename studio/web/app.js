@@ -39,6 +39,8 @@ const ICONS = {
   text: '<path d="M4 6h16M4 11h16M4 16h10"/>',
   gauge: '<path d="M12 14l4-4M4 18a9 9 0 1 1 16 0"/>',
   question: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
+  code: '<path d="m8 7-5 5 5 5M16 7l5 5-5 5"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 function paintIcons(root = document) { root.querySelectorAll('[data-icon]').forEach((el) => { el.outerHTML = icon(el.dataset.icon); }); }
@@ -65,6 +67,15 @@ function toast(msg, ok = false) {
   t.innerHTML = `${icon(ok ? 'check' : 'alert')}<span>${esc(msg)}</span>`; t.className = 'toast' + (ok ? ' ok' : ''); t.hidden = false;
   t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';  // slide in again for each message
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ok ? 2600 : 7000);
+}
+// Copy to the clipboard; the old way when the browser refuses the new one.
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return; } catch { /* fall back below */ }
+  const ta = Object.assign(document.createElement('textarea'), { value: text, readOnly: true });
+  ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none';
+  document.body.append(ta); ta.select();
+  const ok = document.execCommand('copy'); ta.remove();
+  if (!ok) throw new Error("Couldn't copy. Select the text and press Ctrl+C.");
 }
 const run = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message); } };
 
@@ -320,34 +331,45 @@ function languageOptions(selected) {
 }
 
 // ---------- routing ----------
-const VIEWS = ['create', 'batches', 'batch', 'voices', 'models', 'setup', 'connect', 'settings', 'words', 'transcribe', 'help'];
+const VIEWS = ['create', 'batches', 'batch', 'voices', 'models', 'setup', 'connect', 'settings', 'words', 'transcribe', 'help', 'about'];
+const MENU_VIEWS = ['settings', 'words', 'models', 'setup', 'connect', 'about'];  // the pages in the menu on the right
 function route() {
   const [view, arg] = (location.hash.slice(1) || 'create').split('/');
   let v = VIEWS.includes(view) ? view : 'create';
   if (document.body.classList.contains('locked') && !['setup', 'help'].includes(v)) { v = 'setup'; history.replaceState(null, '', '#setup'); }
   S.view = v; S.arg = arg ? decodeURIComponent(arg) : null;
   VIEWS.forEach((x) => { $(`view-${x}`).hidden = x !== v; });
-  document.querySelectorAll('.nav a').forEach((a) => {
-    const on = a.dataset.view === v || (v === 'batch' && a.dataset.view === 'batches')
-      || (['setup', 'words'].includes(v) && a.dataset.view === 'settings' && !document.body.classList.contains('locked'));
+  const locked = document.body.classList.contains('locked');
+  document.querySelectorAll('.nav a, .bar-tools a').forEach((a) => {
+    const on = a.dataset.view === v || (v === 'batch' && a.dataset.view === 'batches');
     if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
-  $('settings-menu').hidden = true;
+  if (MENU_VIEWS.includes(v) && !locked) $('menu-btn').setAttribute('aria-current', 'page'); else $('menu-btn').removeAttribute('aria-current');
+  document.querySelectorAll('#settings-menu a').forEach((a) => a.classList.toggle('on', a.dataset.view === v));
+  closeMenu();
   ({ create: showCreate, batches: loadBatches, batch: loadDetail, voices: loadVoices, models: loadModels, setup: loadSetup,
-     connect: loadConnect, settings: loadSettings, words: loadWords, transcribe: loadTranscribe, help: loadHelp })[v]?.();
+     connect: loadConnect, settings: loadSettings, words: loadWords, transcribe: loadTranscribe, help: loadHelp, about: loadAbout })[v]?.();
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', route);
 
-// The Settings tab opens a small menu: General or Setup.
-document.querySelector('.nav a[data-view="settings"]').addEventListener('click', (e) => {
-  if (document.body.classList.contains('locked')) return;
-  e.preventDefault();
-  const m = $('settings-menu'), r = e.currentTarget.getBoundingClientRect();
-  m.style.left = `${Math.min(r.left, innerWidth - 250)}px`; m.style.top = `${r.bottom + 6}px`;
-  m.hidden = !m.hidden;
+// The menu on the right of the top bar: Settings, Pronunciation, Models, Setup, Connect, About.
+function closeMenu() { $('settings-menu').hidden = true; $('menu-btn').setAttribute('aria-expanded', 'false'); }
+$('menu-btn').addEventListener('click', () => {
+  const m = $('settings-menu');
+  if (!m.hidden) { closeMenu(); return; }
+  m.hidden = false;
+  const r = $('menu-btn').getBoundingClientRect();
+  m.style.left = `${Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8))}px`; m.style.top = `${r.bottom + 6}px`;
+  $('menu-btn').setAttribute('aria-expanded', 'true');
+  m.querySelector('a').focus();
 });
-document.addEventListener('click', (e) => { if (!e.target.closest('.nav a[data-view="settings"], #settings-menu')) $('settings-menu').hidden = true; });
+document.addEventListener('click', (e) => { if (!e.target.closest('#menu-btn, #settings-menu')) closeMenu(); });
+$('settings-menu').addEventListener('keydown', (e) => {
+  const items = [...$('settings-menu').querySelectorAll('a')], i = items.indexOf(document.activeElement);
+  if (e.key === 'Escape') { closeMenu(); $('menu-btn').focus(); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus(); }
+});
 
 document.addEventListener('click', run(async (e) => {
   const b = e.target.closest('[data-open-folder]');
@@ -381,16 +403,16 @@ async function pollState() {
   $('engine-text').textContent = text; $('engine-sub').textContent = sub; $('engine-sub').title = sub;
   $('engine-dot').className = `state-dot ${dot}${ring ? ' ring' : ''}`;
   $('engine-dot').style.setProperty('--p', ring ? Math.min(99, Math.round(100 * eng.frames / eng.frames_expected)) : 0);
-  $('foot-right').textContent = `v${st.version} · ${st.api_base}`;
+  $('foot-right').innerHTML = `<a href="#about">v${esc(st.version)}</a> · ${esc(st.api_base)}`;
   if (st.update?.status === 'available') $('foot-left').innerHTML = `Fatima Voice Studio · <a href="#settings">update ${esc(st.update.latest)} available</a>`;
   renderUpdateBadge();
 }
 
-// An update: a dot on Settings (and on General in its menu), and a one-time message.
+// An update: a dot on the menu button (and on Settings in the menu), and a one-time message.
 let updToasted = null;
 function renderUpdateBadge() {
   const available = S.state?.update?.status === 'available';
-  for (const link of [document.querySelector('.nav a[data-view="settings"]'), document.querySelector('#settings-menu a[href="#settings"]')]) {
+  for (const link of [$('menu-btn'), document.querySelector('#settings-menu a[href="#settings"]')]) {
     let dot = link.querySelector('.badge');
     if (available && !dot) { dot = document.createElement('span'); dot.className = 'badge'; dot.title = 'Update available'; link.append(dot); }
     if (!available && dot) dot.remove();
@@ -398,7 +420,7 @@ function renderUpdateBadge() {
   const latest = S.state?.update?.latest;
   if (available && updToasted !== latest && !document.body.classList.contains('locked')) {
     updToasted = latest;
-    toast(`Version ${latest} is available — Settings → General → Updates`, true);
+    toast(`Version ${latest} is available — Settings → Updates`, true);
   }
 }
 
@@ -1266,7 +1288,7 @@ async function loadConnect() {
 }
 document.addEventListener('click', run(async (e) => {
   const c = e.target.closest('[data-copy]');
-  if (c) { await navigator.clipboard.writeText(c.dataset.copy); toast('Copied.', true); return; }
+  if (c) { await copyText(c.dataset.copy); toast('Copied.', true); return; }
   const t = e.target.closest('[data-tab]');
   if (t) { S.connectTab = t.dataset.tab; $('connect-body')._html = ''; loadConnect(); return; }
   if (e.target.closest('#agent-save')) {
@@ -1667,10 +1689,75 @@ $('t-list').addEventListener('click', run(async (e) => {
   await editDialog({ title: 'Transcript', text, rows: 18, ok: 'Close', help: 'Select and copy what you need, or download the TXT / SRT / VTT.' });
 }));
 
+// ---------- ABOUT ----------
+const PK_FLAG = '<svg class="flag" viewBox="0 0 30 20" role="img" aria-label="Pakistan"><rect width="30" height="20" fill="#01411c"/><rect width="7.5" height="20" fill="#fff"/><circle cx="18.6" cy="10.7" r="5.6" fill="#fff"/><circle cx="20.1" cy="9.4" r="5" fill="#01411c"/><polygon fill="#fff" points="23.62,5.12 23.17,6.70 24.50,7.67 22.85,7.73 22.34,9.30 21.77,7.75 20.13,7.75 21.42,6.73 20.92,5.16 22.28,6.08"/></svg>';  // drawn, because Windows shows flag emoji as letters
+async function loadAbout() {
+  const [a, setup] = await Promise.all([api('/api/about'), api('/api/setup').catch(() => null)]);
+  const st = S.state, upd = st.update || {};
+  const gpu = setup?.hardware?.gpus?.filter((g) => !g.integrated).map((g) => `${g.name}${g.vram_gb ? ` (${g.vram_gb} GB)` : ''}`).join(', ');
+  const hw = setup?.hardware;
+  const models = st.models.filter((m) => m.installed);
+  const details = [
+    ['App', `Fatima Voice Studio ${a.version} (${a.installed ? 'installed' : 'from source'})`],
+    ['Windows', a.windows],
+    ['Processor', hw ? `${hw.cpu}, ${hw.cores} cores, ${Math.round(hw.ram_gb)} GB RAM` : '—'],
+    ['Graphics', gpu || 'none found'],
+    ['Engine', `${st.engine.engine.toUpperCase()} · llama.cpp ${a.engine_release}`],
+    ['Models', models.map((m) => m.label).join(', ') || 'none yet'],
+    ['Python', a.python],
+  ];
+  S.aboutText = details.map(([k, v]) => `${k}: ${v}`).join('\n');
+  const status = upd.status === 'available' ? `<a class="chip accent" href="#settings" style="text-decoration:none">Version ${esc(upd.latest)} available</a>`
+    : upd.status === 'up_to_date' ? '<span class="chip ok">Up to date</span>' : '';
+  const html = `
+    <section class="card about-hero">
+      <span class="mark">${icon('mark')}</span>
+      <div class="who">
+        <h2>Fatima Voice Studio</h2>
+        <div class="ver"><span>Version ${esc(a.version)}</span>${status}</div>
+        <p class="tag">Voiceovers in your own voices, made on your own PC. No subscription, nothing uploaded.</p>
+        <div class="made-in"><span>Proudly made in Pakistan</span> ${PK_FLAG} <span style="white-space:nowrap">with <span aria-label="love">❤️</span> by Hassan Latif</span></div>
+      </div>
+      <div class="links">
+        <a class="btn sm" href="${esc(a.repo)}" target="_blank" rel="noopener">${icon('code')} GitHub</a>
+        <a class="btn sm" href="#help">${icon('question')} Help</a>
+      </div>
+    </section>
+    <div class="about-grid">
+      <section class="card panel"><h2>Models and licences</h2>
+        <p class="help">Everything here can be used in monetized videos and client work, unless it's marked otherwise.</p>
+        <div class="lic-list">${models.length ? models.map((m) => `<div class="lic-row"><span><b>${esc(m.label)}</b></span>
+          <span class="license ${m.noncommercial ? 'nc' : 'ok'}">${m.noncommercial ? '' : icon('check')} ${esc(m.license)}</span></div>`).join('')
+          : '<p class="help">No models downloaded yet. See <a href="#models">Models</a>.</p>'}</div>
+        <div class="lic-row"><span><b>Fatima Voice Studio</b></span><span class="license ok">${icon('check')} MIT — free and open source</span></div>
+      </section>
+      <section class="card panel"><h2>This PC</h2>
+        <p class="help">Something not working? Copy these details into your report on GitHub, so it can be fixed sooner.</p>
+        <div class="kv">${details.map(([k, v]) => `<span class="k">${k}</span><span>${esc(v)}</span>`).join('')}</div>
+        <div class="row wrap">
+          <button class="btn sm accent" data-about="copy">${icon('copy')} Copy details</button>
+          <a class="btn sm" href="${esc(a.repo)}/issues" target="_blank" rel="noopener">${icon('alert')} Report a problem</a>
+          <button class="btn sm" data-open-folder="logs">${icon('folder')} Logs</button>
+        </div>
+        <details class="more"><summary>Folders</summary><div class="more-body"><div class="kv">
+          ${Object.entries(a.folders).map(([k, v]) => `<span class="k">${esc(k)}</span><span class="mono" style="font-size:12px">${esc(v)}</span>`).join('')}</div></div></details>
+      </section>
+    </div>
+    ${a.notices ? `<details class="card about-notices"><summary>Built with: third-party software and licences</summary>
+      <div class="doc">${mdRender(a.notices.replace(/^# .*\n/, ''), 'README')}</div></details>` : ''}`;
+  setHtml($('about-body'), html);
+}
+$('about-body').addEventListener('click', run(async (e) => {
+  if (!e.target.closest('[data-about="copy"]')) return;
+  await copyText(S.aboutText);
+  toast('Copied. Paste it into your problem report.', true);
+}));
+
 // ---------- HELP ----------
 // The guides are the Markdown files in studio/help (also read on GitHub). #help/<guide>/<section> opens one.
 const HELP_FOR = { create: 'making-voiceovers', batches: 'batches', batch: 'batches', voices: 'voices', transcribe: 'transcribe',
-  models: 'setup-and-models', setup: 'setup-and-models', connect: 'connect', settings: 'settings', words: 'pronunciation' };
+  models: 'setup-and-models', setup: 'setup-and-models', connect: 'connect', settings: 'settings', words: 'pronunciation',
+  about: 'troubleshooting' };
 S.help = { docs: {}, toc: null };
 
 // GitHub's heading ids: lower case, punctuation dropped, spaces to hyphens ("3. Setup: two downloads" -> "3-setup-two-downloads").

@@ -1055,6 +1055,20 @@ def create_app(cfg: dict) -> FastAPI:
             await asyncio.to_thread(hardware.detect, True)
         return setup_state()
 
+    @app.get("/api/about")
+    def about():
+        """The About page: version, this PC in a few words (for problem reports), folders, and the notices."""
+        import platform
+        notices = config.ROOT / "THIRD_PARTY_NOTICES.md"
+        return {
+            "version": __version__, "repo": REPO_URL, "installed": config.INSTALLED,
+            "windows": f"Windows {platform.release()} ({platform.version()})", "python": platform.python_version(),
+            "engine_release": config.ENGINE_RELEASE,
+            "folders": {"Batches": str(store.root), "Voices": str(voices.root), "Models": cfg["models_dir"],
+                        "Settings and logs": str(config.DATA)},
+            "notices": notices.read_text(encoding="utf-8") if notices.exists() else "",
+        }
+
     @app.post("/api/setup/engines/{key}/{action}")
     async def engine_action(key: str, action: str):
         if key not in config.ENGINES:

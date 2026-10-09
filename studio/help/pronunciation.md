@@ -4,7 +4,7 @@ The pronunciation list teaches the voice how to say names, acronyms and abbrevia
 for every script in that language from then on. Your script and subtitles keep the original spelling: only what
 the voice reads changes.
 
-Open it from **Settings → Pronunciation** at the top, or from the **Pronunciation** link under *Output and pauses*
+Open it from the menu button at the top right (the sliders icon, next to **?**) → **Pronunciation**, or from the **Pronunciation** link under *Output and pauses*
 on the Create page.
 
 ## Add a word

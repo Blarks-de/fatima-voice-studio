@@ -13,27 +13,34 @@
 
 <header class="appbar">
   <a class="brand" href="#create"><span class="mark"><span data-icon="mark"></span></span>Fatima Voice Studio</a>
+  <!-- The work you do every day as tabs; everything else in the menu on the right. -->
   <nav class="nav" aria-label="Main">
     <a href="#create" data-view="create"><span data-icon="mic"></span>Create</a>
     <a href="#batches" data-view="batches"><span data-icon="layers"></span>Batches</a>
     <a href="#voices" data-view="voices"><span data-icon="users"></span>Voices</a>
     <a href="#transcribe" data-view="transcribe"><span data-icon="text"></span>Transcribe</a>
-    <a href="#models" data-view="models"><span data-icon="box"></span>Models</a>
     <a href="#setup" data-view="setup"><span data-icon="cpu"></span>Setup</a>
-    <a href="#connect" data-view="connect"><span data-icon="plug"></span>Connect</a>
-    <a href="#settings" data-view="settings"><span data-icon="sliders"></span>Settings<span class="nav-caret" aria-hidden="true">▾</span></a>
-    <a href="#help" data-view="help"><span data-icon="question"></span>Help</a>
   </nav>
-  <div class="nav-menu" id="settings-menu" role="menu" aria-label="Settings sections" hidden>
-    <a href="#settings" role="menuitem">General<span>Defaults, output, folders, updates</span></a>
-    <a href="#words" role="menuitem">Pronunciation<span>Names, abbreviations and numbers</span></a>
-    <a href="#setup" role="menuitem">Setup<span>Hardware, engine, models, speed test</span></a>
-  </div>
-  <div class="engine">
-    <div class="engine-state">
-      <div class="engine-line"><span class="state-dot" id="engine-dot"></span><span id="engine-text">Connecting…</span></div>
-      <div class="engine-sub" id="engine-sub"></div>
+  <div class="bar-right">
+    <div class="engine">
+      <div class="engine-state">
+        <div class="engine-line"><span class="state-dot" id="engine-dot"></span><span id="engine-text">Connecting…</span></div>
+        <div class="engine-sub" id="engine-sub"></div>
+      </div>
     </div>
+    <div class="bar-tools">
+      <a class="tool" href="#help" data-view="help" title="Help" aria-label="Help"><span data-icon="question"></span></a>
+      <button type="button" class="tool" id="menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="settings-menu" title="Settings and more" aria-label="Settings and more"><span data-icon="sliders"></span><span class="nav-caret" aria-hidden="true">▾</span></button>
+    </div>
+  </div>
+  <div class="nav-menu" id="settings-menu" role="menu" aria-label="Settings and more" hidden>
+    <a href="#settings" role="menuitem" data-view="settings"><span data-icon="sliders"></span><span class="t"><b>Settings</b><span>Defaults, output, folders, updates</span></span></a>
+    <a href="#words" role="menuitem" data-view="words"><span data-icon="text"></span><span class="t"><b>Pronunciation</b><span>Names, abbreviations and numbers</span></span></a>
+    <a href="#models" role="menuitem" data-view="models"><span data-icon="box"></span><span class="t"><b>Models</b><span>Voice, subtitle and tool downloads</span></span></a>
+    <a href="#setup" role="menuitem" data-view="setup"><span data-icon="cpu"></span><span class="t"><b>Setup</b><span>Hardware, engine, speed test</span></span></a>
+    <a href="#connect" role="menuitem" data-view="connect"><span data-icon="plug"></span><span class="t"><b>Connect</b><span>API and AI agents</span></span></a>
+    <hr>
+    <a href="#about" role="menuitem" data-view="about"><span data-icon="info"></span><span class="t"><b>About</b><span>Version, licences, this PC</span></span></a>
   </div>
 </header>
 
@@ -391,6 +398,17 @@
     <nav class="help-toc" id="help-toc" aria-label="Guides"></nav>
     <article class="card doc" id="help-doc"></article>
   </div>
+</main>
+
+<!-- ============ ABOUT ============ -->
+<main class="page" id="view-about" hidden>
+  <div class="page-head">
+    <div>
+      <div class="title-row"><h1>About</h1><span class="kicker">FATIMA VOICE STUDIO</span></div>
+      <p class="lede">Who made it, what it's built on, and the details to send with a problem report.</p>
+    </div>
+  </div>
+  <div id="about-body"><div class="skel-cols"><div class="skel"></div><div class="skel"></div></div></div>
 </main>
 
 <footer class="appfoot"><span id="foot-left">Fatima Voice Studio</span><span id="foot-right"></span></footer>

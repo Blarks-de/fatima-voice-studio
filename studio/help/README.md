@@ -1,7 +1,7 @@
 # Fatima Voice Studio help
 
 Fatima Voice Studio turns your scripts into voiceovers on your own Windows PC, in a voice from your library. These
-guides show how to use every part of it. The same pages are in the app: click **Help** at the top.
+guides show how to use every part of it. The same pages are in the app: click **?** at the top right.
 
 ## Start here
 

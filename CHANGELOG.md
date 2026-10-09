@@ -3,6 +3,8 @@
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
 ## 0.2.4
+- Tidier top bar: Create, Batches, Voices and Transcribe as tabs; Help (?) and a menu on the right with Settings, Pronunciation, Models, Setup, Connect and About.
+- New About page: version, licences of your models, credits, and your PC's details to copy into a problem report.
 - Dark mode: pick Light, Dark or Same as Windows in Settings → App.
 - New audio players everywhere: a waveform you can click or drag to jump around, and only one plays at a time.
 - Tidier voice cards: initials badge, buttons on one line (Make default is now a star), and a note under Add voice saying what's still needed.

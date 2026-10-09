@@ -4,12 +4,12 @@
 
 The installed app checks GitHub for a new version when it starts and every 6 hours. When there is one:
 
-- a dot appears on **Settings** at the top,
+- a dot appears on the menu button at the top right (and on **Settings** inside it),
 - a short message says which version is out,
 - Windows shows a notification once for each new version, and
 - the footer at the bottom of every page says *update available*.
 
-Open **Settings → General** and look at the **Updates** card. It lists what's new in plain words, with a link to the
+Open **Settings** (in the menu at the top right) and look at the **Updates** card. It lists what's new in plain words, with a link to the
 release page on GitHub.
 
 ## Quick update or Full update
