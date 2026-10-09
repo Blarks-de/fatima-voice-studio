@@ -73,10 +73,14 @@ jobs:
             curl.exe -sSfL -o $zip "$base/$p"
             7z x $zip -o"$env:RUNNER_TEMP\cuda" -y | Out-Null
           }
-          Get-ChildItem "$env:RUNNER_TEMP\cuda" -Directory | ForEach-Object { robocopy $_.FullName $root /E /NFL /NDL /NJH /NJS | Out-Null }
+          Get-ChildItem "$env:RUNNER_TEMP\cuda" -Directory | ForEach-Object {
+            robocopy $_.FullName $root /E /NFL /NDL /NJH /NJS | Out-Null
+            if ($LASTEXITCODE -ge 8) { throw "Copying $($_.Name) failed (robocopy $LASTEXITCODE)" }  # 1-7 mean copied
+          }
           "$root\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "CUDA_PATH=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "CUDA_PATH_V13_4=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          exit 0
 
       - name: Install CUDA 12.4
         if: matrix.backend == 'cuda-12.4'
@@ -100,10 +104,14 @@ jobs:
             curl.exe -sSfL -o $zip "$base/$p"
             7z x $zip -o"$env:RUNNER_TEMP\cuda" -y | Out-Null
           }
-          Get-ChildItem "$env:RUNNER_TEMP\cuda" -Directory | ForEach-Object { robocopy $_.FullName $root /E /NFL /NDL /NJH /NJS | Out-Null }
+          Get-ChildItem "$env:RUNNER_TEMP\cuda" -Directory | ForEach-Object {
+            robocopy $_.FullName $root /E /NFL /NDL /NJH /NJS | Out-Null
+            if ($LASTEXITCODE -ge 8) { throw "Copying $($_.Name) failed (robocopy $LASTEXITCODE)" }  # 1-7 mean copied
+          }
           "$root\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "CUDA_PATH=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "CUDA_PATH_V12_4=$root" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          exit 0
 
       - name: Install the Vulkan SDK
         if: matrix.backend == 'vulkan'
