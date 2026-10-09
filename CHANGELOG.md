@@ -2,6 +2,9 @@
 
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
+## 0.2.6
+- Fixed: a part could refuse to play ("no supported sources") after the batch page refreshed while a batch was running. Players now load again by themselves, and a part's audio only loads when you play it, so long batches open faster.
+
 ## 0.2.5
 - Whisper runs on your graphics card, like the voice: subtitles and transcripts about 9× faster (a 26-minute script in about 40 seconds instead of 6½ minutes). NVIDIA, AMD and Intel cards; it sets itself up after the update with a small one-time download, and uses the processor if the card can't.
 - On the processor, Whisper now runs at low priority with half the threads, so the PC stays usable.

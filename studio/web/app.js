@@ -126,18 +126,20 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => apRe
 // ---------- audio players ----------
 // Every player is ours: a hidden <audio>, a play button, a waveform to click or drag, and the time. The markup is a
 // plain string (so setHtml can compare it); the waveform is drawn once the player scrolls into view.
-const player = (src, { autoplay = false, small = false } = {}) => `<div class="ap${small ? ' sm' : ''}">
-  <audio preload="metadata" src="${esc(src)}"${autoplay ? ' autoplay' : ''}></audio>
+// `seconds` (when the length is already known, as for parts): the audio loads only when played, so a batch page with
+// a hundred parts doesn't open a hundred audio downloads at once.
+const player = (src, { autoplay = false, small = false, seconds = null } = {}) => `<div class="ap${small ? ' sm' : ''}"${seconds ? ` data-seconds="${seconds}"` : ''}>
+  <audio preload="${seconds && !autoplay ? 'none' : 'metadata'}" src="${esc(src)}"${autoplay ? ' autoplay' : ''}></audio>
   <button class="ap-play" type="button" aria-label="Play">${icon('play', 'i-play')}${icon('pause', 'i-pause')}</button>
   <div class="ap-wave" role="slider" tabindex="0" aria-label="Position" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><canvas></canvas></div>
-  <span class="ap-time"><b>0:00</b> / 0:00</span></div>`;
+  <span class="ap-time"><b>0:00</b> / ${fmtClock(seconds || 0)}</span></div>`;
 
 const AP = { peaks: new Map(), queue: [], loading: 0 };
 const apAudio = (ap) => ap.querySelector('audio');
 const apFrac = (ap) => { const a = apAudio(ap); return a.duration ? a.currentTime / a.duration : 0; };
 function apTime(ap) {
   const a = apAudio(ap), wave = ap.querySelector('.ap-wave');
-  const dur = Number.isFinite(a.duration) ? a.duration : 0;
+  const dur = Number.isFinite(a.duration) ? a.duration : Number(ap.dataset.seconds) || 0;
   ap.querySelector('.ap-time').innerHTML = `<b>${fmtClock(a.currentTime)}</b> / ${fmtClock(dur)}`;
   wave.setAttribute('aria-valuemax', Math.round(dur)); wave.setAttribute('aria-valuenow', Math.round(a.currentTime));
   wave.setAttribute('aria-valuetext', `${fmtClock(a.currentTime)} of ${fmtClock(dur)}`);
@@ -214,8 +216,21 @@ function apInit(root) {
     if (!a.paused) ap.classList.add('playing');
   });
 }
-new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => { if (n.nodeType === 1 && n.parentElement) apInit(n.parentElement); })))
-  .observe(document.body, { childList: true, subtree: true });
+// A player that leaves the page lets go of its audio at once (browsers allow only so many per tab, and a running
+// batch redraws its page after every part).
+function apRelease(node) {
+  const aps = node.matches?.('.ap') ? [node] : [...(node.querySelectorAll?.('.ap') || [])];
+  aps.forEach((ap) => {
+    if (ap.isConnected) return;  // moved, not removed
+    apSeen.unobserve(ap); const wave = ap.querySelector('.ap-wave'); if (wave) apSized.unobserve(wave);
+    const a = apAudio(ap); if (!a) return;
+    a.pause(); a.removeAttribute('src'); a.load();
+  });
+}
+new MutationObserver((muts) => muts.forEach((m) => {
+  m.removedNodes.forEach((n) => { if (n.nodeType === 1) apRelease(n); });
+  m.addedNodes.forEach((n) => { if (n.nodeType === 1 && n.parentElement) apInit(n.parentElement); });
+})).observe(document.body, { childList: true, subtree: true });
 // While something plays, move the time and the waveform every frame.
 function apTick() {
   const live = document.querySelectorAll('.ap.playing');
@@ -236,11 +251,28 @@ function apTick() {
   }
   apTime(ap); apDraw(ap);
 }, true));
-const apToggle = (a) => { if (a.paused) a.play().catch((err) => toast(`Can't play this audio: ${err.message}`)); else a.pause(); };
+// Start the file again from scratch: an <audio> whose loading once failed (the server was busy, the page redrew
+// mid-download) stays broken until it's told to load again.
+function apReload(a) { const src = a.getAttribute('src'); a.removeAttribute('src'); a.load(); a.setAttribute('src', src); a.load(); }
+async function apPlay(a) {
+  if (a.error) apReload(a);
+  try { await a.play(); return; } catch (err) { if (err.name === 'AbortError') return; }
+  apReload(a);  // one more try with a fresh load
+  try { await a.play(); } catch (err) {
+    if (err.name !== 'AbortError') toast(`Couldn't play this audio. Reload the page and try again. (${err.message})`);
+  }
+}
+const apToggle = (a) => { if (a.paused) apPlay(a); else a.pause(); };
 document.addEventListener('click', (e) => { const b = e.target.closest('.ap-play'); if (b) apToggle(apAudio(b.closest('.ap'))); });
 function apSeekTo(ap, frac) {
   const a = apAudio(ap);
-  if (!Number.isFinite(a.duration)) return;
+  if (!Number.isFinite(a.duration)) {  // not loaded yet (parts load when first used): load, then jump
+    if (a.preload === 'none' || a.error) {
+      a.preload = 'metadata'; if (a.error) apReload(a); else a.load();
+      a.addEventListener('loadedmetadata', () => apSeekTo(ap, frac), { once: true });
+    }
+    return;
+  }
   a.currentTime = Math.min(Math.max(frac, 0), 1) * a.duration;
   apTime(ap); apDraw(ap);
 }
@@ -851,7 +883,7 @@ function segRow(d, it) {
       <div class="sub">${chip(running ? 'running' : it.status)}${it.audio_s ? `<span>${it.audio_s.toFixed(1)} s</span>` : ''}${it.duration ? `<span>made in ${it.duration.toFixed(1)} s</span>` : ''}<span>seed ${it.seed}</span>${it.pause_after ? `<span>then ${it.pause_after} s pause</span>` : ''}</div>
       ${it.check ? `<div class="flag-note">${icon('alert')} ${esc(it.check)}</div>` : ''}
       ${it.error ? `<div class="err-note">${esc(it.error)}</div>` : ''}</div>
-    <div class="tools">${it.status === 'done' ? player(fileUrl(d.id, it.file, it.finished), { small: true }) : ''}
+    <div class="tools">${it.status === 'done' ? player(fileUrl(d.id, it.file, it.finished), { small: true, seconds: it.audio_s }) : ''}
       <div class="row" style="gap:6px">
         <button class="btn xs" data-seg="regen" ${running ? 'disabled' : ''} title="Speak this part again with a new seed">${icon('dice')} New take</button>
         <button class="btn xs" data-seg="edit" ${running ? 'disabled' : ''}>${icon('pencil')} Edit</button>
