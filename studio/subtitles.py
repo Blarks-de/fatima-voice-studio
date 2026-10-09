@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import threading
 import unicodedata
 import uuid
@@ -39,7 +40,8 @@ PROGRESS = re.compile(r"progress\s*=\s*(\d+)%")  # whisper-cli -pp
 VK_DEVICE = re.compile(r"ggml_vulkan: (\d+) = .*?\| uma: (\d)")  # each Vulkan device; uma 1 = built into the processor
 VK_USING = re.compile(r"using Vulkan(\d+) backend")
 ON_CARD = re.compile(r"using (CUDA|Vulkan)\d+ backend")  # whisper-cli found the graphics card
-BELOW_NORMAL = 0x00004000  # Windows priority: Whisper never makes the rest of the PC wait
+# Windows priority: Whisper never makes the rest of the PC wait (elsewhere creationflags must be 0)
+BELOW_NORMAL = 0x00004000 if sys.platform == "win32" else 0
 
 
 def whisper_builds(cfg: dict) -> list[dict]:
