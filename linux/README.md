@@ -17,12 +17,12 @@ Honest overview of what has and hasn't been verified. "Re-run pending" means it 
 | Full TTS run, voice cloning, English and German batch with `[pause]`, WAV + MP3 + SRT, abort and resume, `kill -9` cleanup | **Tested** on CachyOS (Arch), RTX 4070 Ti SUPER, `llama.cpp-cuda` b10689 (2026-10-08). Batch part re-run after the rebase, see the next row. Abort/resume, `kill -9` cleanup and creating a new voice: **re-run pending** |
 | Full TTS + Whisper batch in one go: 3 scripts (German with two voices, English), `[pause]`, Q8 model, Whisper `small`, WAV + MP3 + SRT, −16 LUFS | **Tested** on CachyOS (Arch), RTX 4070 Ti SUPER, `llama.cpp-cuda` b10689 (2026-10-09, after the rebase and the review fixes). All scripts finished without errors, subtitles match the script (Whisper match 0.93–1.0) |
 | MP4 and M4A decoded through the system ffmpeg (`media.decode`, `to_wav16k`) with a stray `ffmpeg.exe` present | **Tested** (generated test clips, Debian 13, no GPU) |
-| Video/M4A input inside a real transcription run (the `/transcribe` page as a whole) | **Not tested yet** |
+| Transcription (`POST /api/transcripts`, the backend of the `/transcribe` page) with WAV, M4A and MP4 input, language auto-detection, TXT/SRT/VTT/JSON output; Whisper `medium` (q5_0) re-run of the batch above | **Tested** on CachyOS (Arch), 2026-10-09 (Whisper on the CPU, about real time). The `/transcribe` page itself in a browser: not tested |
 | Tray icon visibility in the KDE panel, Browse dialog (zenity/kdialog), `xdg-open` buttons | Not tested (needs a screen) |
 | systemd service (`./setup.sh --service`) at runtime, `--desktop` menu entry in a desktop session | Not tested at runtime. The generated unit/desktop files were launched with `systemd` / `gio launch` from an install path with spaces |
 | Voice-clip upload with noise removal (voice separator, `sherpa-onnx`) | Not tested |
 | German audio through Whisper `small` (inside the batch above) | **Tested** |
-| Whisper models larger than `small`, model downloads through the app UI | Not tested (the batch used models that were already on disk) |
+| Model download through the app (Whisper `medium`, 540 MB, started via the API) | **Tested** (finished and was used). Q8 and `small` were already on disk; Whisper `large`/`turbo` not tried |
 
 ## Quick start
 
