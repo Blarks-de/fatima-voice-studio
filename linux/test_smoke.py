@@ -41,10 +41,14 @@ TARGETS = {
     # app.py imports these by name (`from .updater import Updater`), so compat has to patch them *before* app is
     # imported. Renaming them or importing them differently would bypass the patch.
     "app": {"create_app", "Updater", "pick_folder"},
+    # _patch_tools: system ffmpeg instead of the Windows download, no Windows whisper zip, no engine download
+    "media": {"ffmpeg_exe", "ffmpeg_source"},
+    "downloads": {"Downloads"},
 }
 CLASS_MEMBERS = {
     ("updater", "Updater"): {"watch", "check", "start"},
     ("tray", "Tray"): {"__init__"},
+    ("downloads", "Downloads"): {"tools", "start_tool", "delete_tool", "start_engine", "_whisper_missing"},
 }
 DEFAULT_KEYS = {"batches_dir", "exports_dir", "models_dir", "engine", "check_updates"}
 
@@ -97,6 +101,17 @@ class StaticChecks(unittest.TestCase):
                 self.assertFalse(DEFAULT_KEYS - keys, f"config.DEFAULTS lost {sorted(DEFAULT_KEYS - keys)}")
                 return
         self.fail("config.DEFAULTS not found")
+
+    def test_web_script_patches_still_match(self):
+        """compat.py edits/rewords studio/web/app.js; if upstream changes those lines the patch silently stops."""
+        sys.path.insert(0, str(HERE))
+        import compat
+        js = (STUDIO / "web" / "app.js").read_text(encoding="utf-8")
+        for old, _ in compat.JS_PATCHES + compat.TEXTS:
+            with self.subTest(old=old[:50]):
+                # TEXTS also holds strings from Python files (error messages); look in all of studio/
+                found = old in js or any(old in f.read_text(encoding="utf-8") for f in STUDIO.glob("*.py"))
+                self.assertTrue(found, f"“{old[:60]}…” is no longer in studio/; update compat.py")
 
     def test_engine_command_line(self):
         used = {n.value for n in ast.walk(parse("engine")) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
@@ -193,6 +208,114 @@ class RuntimeChecks(unittest.TestCase):
             if old in raw:
                 self.assertNotIn(old, served.text, f"“{old}” is still shown")
                 self.assertIn(new, served.text)
+
+    # ---- ffmpeg, whisper, system engine, paths with spaces -------------------------------------------------
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        return TestClient(self.app.create_app(self.config.load()), headers={"X-Studio": "1"})  # POSTs need the header
+
+    def test_ffmpeg_is_the_system_one_never_a_windows_exe(self):
+        from studio import media
+        fake_exe = self.config.tool_dir("ffmpeg") / "ffmpeg.exe"  # what a Windows download would leave behind
+        fake_exe.parent.mkdir(parents=True, exist_ok=True)
+        fake_exe.write_text("MZ not a Linux program")
+        self.addCleanup(fake_exe.unlink, missing_ok=True)
+        with tempfile.TemporaryDirectory() as bindir:
+            real = Path(bindir) / "ffmpeg"
+            real.write_text("#!/bin/sh\n")
+            real.chmod(0o755)
+            old_path = os.environ["PATH"]
+            os.environ["PATH"] = bindir
+            try:
+                self.assertEqual(media.ffmpeg_exe(), str(real), "ffmpeg.exe must not win over the system ffmpeg")
+                self.assertEqual(media.ffmpeg_source(), "system")
+            finally:
+                os.environ["PATH"] = old_path
+            os.environ["PATH"] = bindir + "/nothing-here"
+            try:
+                self.assertIsNone(media.ffmpeg_exe(), "ffmpeg.exe must not be used when there is no system ffmpeg")
+                self.assertIsNone(media.ffmpeg_source())
+            finally:
+                os.environ["PATH"] = old_path
+
+    def test_no_windows_ffmpeg_download_is_offered_or_started(self):
+        c = self._client()
+        tools = c.get("/api/tools").json()
+        self.assertEqual([t["key"] for t in tools], ["ffmpeg"])
+        self.assertTrue(tools[0]["system_only"])
+        self.assertEqual(tools[0]["size"], 0)
+        self.assertFalse(tools[0]["installed"])
+        self.assertFalse(any("zip" in t for t in tools))
+        r = c.post("/api/tools/ffmpeg/download")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("ffmpeg", r.json()["detail"])
+        self.assertIsNone(c.get("/api/tools").json()[0]["job"], "no download job may have been started")
+        self.assertFalse((self.config.tool_dir("ffmpeg") / "ffmpeg.exe").exists())
+        self.assertNotIn("github.com/GyanD", str(self.config.TOOLS))
+
+    def test_missing_ffmpeg_message_points_to_the_package_manager(self):
+        old_path, os.environ["PATH"] = os.environ["PATH"], "/nonexistent"
+        try:
+            r = self._client().post("/api/transcripts", files={"file": ("clip.mp4", b"x", "video/mp4")})
+        finally:
+            os.environ["PATH"] = old_path
+        # without a Whisper model the request stops earlier; either way the Models-page advice must not appear
+        self.assertNotIn("Models page (Tools)", r.text)
+
+    def test_system_engine_has_no_download(self):
+        c = self._client()
+        eng = next(e for e in c.get("/api/setup").json()["engines"] if e["key"] == "system")
+        self.assertEqual(eng["size"], 0)
+        r = c.post("/api/setup/engines/system/download")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("nothing to download", r.json()["detail"])
+        self.assertIsNone(c.get("/api/setup").json()["engines"][0]["job"])
+
+    def test_page_script_has_no_download_button_for_system_things(self):
+        js = self._client().get("/app.js").text
+        self.assertIn("t.system_only", js)
+        self.assertIn("else if (!e.size)", js)
+        self.assertNotIn("get ffmpeg on the", js)
+
+    def test_whisper_model_download_skips_the_windows_zip(self):
+        from studio import downloads
+        d = downloads.Downloads(self.config.load())
+        self.assertFalse(d._whisper_missing(), "the whisper-bin-x64.zip must never be requested on Linux")
+        for m in d.status():
+            if m["kind"] == "subtitles":
+                self.assertEqual(m["to_download"], sum(self.config.FILES[f][1] for f in self.config.model_files(m["key"])))
+                self.assertIn("build-whisper.sh", m["about"])
+
+    def test_missing_whisper_cli_gets_a_clear_warning(self):
+        cfg = self.config.load()
+        folder = Path(cfg["models_dir"])
+        folder.mkdir(parents=True, exist_ok=True)
+        model = folder / self.config.MODELS["whisper-base"]["files"][0]
+        model.write_bytes(b"x")
+        self.addCleanup(model.unlink, missing_ok=True)
+        old = os.environ.get("FVS_WHISPER_CLI")
+        os.environ["FVS_WHISPER_CLI"] = "/nonexistent/whisper-cli"
+        try:
+            hw = self.hardware.detect(True)
+            msgs = [w["message"] for w in self.hardware.warnings(hw, cfg, "system")]
+        finally:
+            if old is None:
+                del os.environ["FVS_WHISPER_CLI"]
+            else:
+                os.environ["FVS_WHISPER_CLI"] = old
+        self.assertTrue(any("./build-whisper.sh" in m for m in msgs), msgs)
+
+    def test_desktop_entry_quotes_paths_with_spaces(self):
+        c = self.compat
+        self.assertEqual(c.exec_quote("/opt/fvs/launcher"), "/opt/fvs/launcher")
+        self.assertEqual(c.exec_quote("/home/me/My Apps/fvs"), '"/home/me/My Apps/fvs"')
+        self.assertEqual(c.exec_quote("/a b/$x"), '"/a b/\\\\$x"')
+        self.assertEqual(c.exec_quote("/100%/x y"), '"/100%%/x y"')
+        line = next(l for l in c.desktop_entry("--no-browser").splitlines() if l.startswith("Exec="))
+        self.assertTrue(line.endswith(" --no-browser"))
+        if " " in str(c.LINUX_DIR):
+            self.assertTrue(line.startswith('Exec="'), line)
 
     def test_tray_patch(self):
         try:

@@ -12,6 +12,7 @@ What it does:
   * dialogs    zenity / kdialog folder picker instead of the Windows one
   * autostart  ~/.config/autostart/*.desktop instead of Startup-folder .lnk files
   * updater    switched off (Windows installer updates); update with `git pull`
+  * tools      ffmpeg and whisper-cli come from the system / build-whisper.sh; the Windows downloads are never offered
   * engine     llama-tts dies with the app (setpriv --pdeathsig), like the Windows job object
   * wording    visible "Windows" texts in the web page are rewritten (Start at login, Trash …)
   * misc       os.startfile -> xdg-open, clipboard -> wl-copy / xclip / xsel
@@ -80,7 +81,8 @@ def _patch_config() -> None:
     config.ENGINES[SYSTEM_ENGINE] = {
         "label": "System · llama.cpp",
         "about": "The llama-tts installed on this PC (CUDA, Vulkan or CPU, whatever that build was made for). "
-                 "Nothing to download here.",
+                 "Nothing to download here: install llama.cpp (build b10270 or newer) with your package manager "
+                 "or from source, then press Check again.",
         "zips": [], "gpu": True}
 
     def engine_dir(cfg: dict, key: str | None = None) -> Path:
@@ -116,6 +118,77 @@ def _link_tools() -> None:
     home = fvs_home()
     _link(find_tool("FVS_LLAMA_TTS", "llama-tts"), home / "engine" / SYSTEM_ENGINE / "llama-tts")
     _link(find_tool("FVS_WHISPER_CLI", "whisper-cli"), home / "engine" / "whisper" / "whisper-cli")
+
+
+# ---- ffmpeg, whisper-cli and the engine: system tools, never the Windows downloads --------------------------------
+
+FFMPEG_HINT = ("ffmpeg isn't installed on this PC. Install it with your package manager "
+               "(for example sudo pacman -S ffmpeg, or sudo apt install ffmpeg), then reload this page.")
+ENGINE_HINT = ("There is nothing to download for this engine. Install llama.cpp (build b10270 or newer) "
+               "with your package manager or from source, then press Check again.")
+WHISPER_NOTE = " On Linux this also needs whisper-cli: run ./build-whisper.sh once (see linux/README.md)."
+WHISPER_WARNING = ("Subtitles and transcripts need whisper-cli, which was not found. Run ./build-whisper.sh in the "
+                   "linux folder (see linux/README.md), then press Check again. The model download itself is fine.")
+
+
+def _patch_tools() -> None:
+    """studio/ downloads Windows programs (ffmpeg.exe, whisper-cli.exe) and prefers its own ffmpeg.exe over the
+    system one. None of that is wanted here: use the system ffmpeg, never an ffmpeg.exe, and tell the user what to do."""
+    from fastapi import HTTPException
+    from studio import config, downloads, hardware, media
+
+    # ffmpeg: only the one on PATH. An ffmpeg.exe left in engine/ffmpeg/ (e.g. from a download made before this
+    # patch) is ignored; it can't run here and would otherwise win over the real one.
+    media.ffmpeg_exe = lambda: shutil.which("ffmpeg")
+    media.ffmpeg_source = lambda: "system" if shutil.which("ffmpeg") else None
+    config.TOOLS.clear()
+    config.TOOLS["ffmpeg"] = {
+        "label": "ffmpeg (video files)", "exe": "ffmpeg",
+        "about": "Lets the app read video files (MP4, MKV, MOV, WEBM…) and M4A/AAC for transcripts and voice clips. "
+                 "On Linux this is the ffmpeg installed on this PC, nothing is downloaded: install it with your "
+                 "package manager (for example sudo pacman -S ffmpeg, or sudo apt install ffmpeg), then reload this page.",
+        "license": "Installed separately by your distribution"}
+    D = downloads.Downloads
+
+    def tools(self) -> list[dict]:
+        t, found = config.TOOLS["ffmpeg"], bool(shutil.which("ffmpeg"))
+        return [{"key": "ffmpeg", "label": t["label"], "about": t["about"], "license": t["license"], "size": 0,
+                 "installed": False, "on_pc": found, "ready": found, "partial": 0, "job": None, "system_only": True}]
+
+    def start_tool(self, key: str) -> None:
+        raise HTTPException(409, FFMPEG_HINT)
+
+    def delete_tool(self, key: str) -> None:
+        raise HTTPException(409, "ffmpeg is the system's own copy; the app doesn't manage it.")
+
+    D.tools, D.start_tool, D.delete_tool = tools, start_tool, delete_tool
+
+    # engine: the "system" engine has no zips, so a Download click would only end in a made-up error
+    real_start_engine = D.start_engine
+
+    def start_engine(self, key: str) -> None:
+        if not config.ENGINES.get(key, {}).get("zips"):
+            raise HTTPException(409, ENGINE_HINT)
+        real_start_engine(self, key)
+
+    D.start_engine = start_engine
+
+    # whisper: the model downloads as usual, but not the Windows whisper-bin-x64.zip (which has no whisper-cli
+    # for Linux). whisper-cli comes from build-whisper.sh; the Setup page warns while it is missing.
+    D._whisper_missing = lambda self: False
+    for m in config.MODELS.values():
+        if m["kind"] == "subtitles":
+            m["about"] += WHISPER_NOTE
+
+    real_warnings = hardware.warnings
+
+    def warnings(hw: dict, cfg: dict, engine: str) -> list[dict]:
+        out = real_warnings(hw, cfg, engine)
+        if config.subtitles_model(cfg) and not find_tool("FVS_WHISPER_CLI", "whisper-cli"):
+            out.append({"level": "warn", "code": "no_whisper_cli", "message": WHISPER_WARNING})
+        return out
+
+    hardware.warnings = warnings
 
 
 # ---- hardware ---------------------------------------------------------------------------------------------
@@ -259,10 +332,22 @@ def _patch_misc() -> None:
 AUTOSTART_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "autostart" / "fatima-voice-studio.desktop"
 
 
+def exec_quote(arg: str) -> str:
+    """One argument for a Desktop Entry Exec= line: double-quoted if it holds a space or another reserved
+    character. Inside the quotes " ` $ and \\ need a backslash, and the file format doubles every backslash once
+    more, so they appear as \\" \\` \\$ and four backslashes. A literal % is written %%."""
+    arg = arg.replace("%", "%%")
+    if not any(c in arg for c in " \t\n\"'\\><~|&;$*?#()`"):
+        return arg
+    for ch in ("\\", '"', "`", "$"):
+        arg = arg.replace(ch, "\\" * (4 if ch == "\\" else 2) + (ch if ch != "\\" else ""))
+    return f'"{arg}"'
+
+
 def desktop_entry(extra_args: str = "") -> str:
     return ("[Desktop Entry]\nType=Application\nName=Fatima Voice Studio\n"
             "Comment=Voiceovers and voice cloning on this PC\n"
-            f"Exec={LINUX_DIR / 'fatima-voice-studio'} {extra_args}".rstrip() + "\n"
+            f"Exec={exec_quote(str(LINUX_DIR / 'fatima-voice-studio'))} {extra_args}".rstrip() + "\n"
             "Terminal=false\nCategories=AudioVideo;Audio;\nIcon=audio-input-microphone\n")
 
 
@@ -347,6 +432,25 @@ TEXTS = [
     ("Start with Windows", "Start at login"),
     ("Windows notification when a batch finishes", "Desktop notification when a batch finishes"),
     ("Recycle Bin", "Trash"),
+    # ffmpeg and the engine are system programs here (see _patch_tools); these texts send people to the Models page
+    ("Download it on the Models page (Tools), then try again.",
+     "Install ffmpeg on this PC (for example sudo pacman -S ffmpeg, or sudo apt install ffmpeg), then try again."),
+    ("get ffmpeg on the <a href=\"#models\">Models page</a> (Tools).",
+     "install ffmpeg on this PC (see <a href=\"#models\">Models</a>, Tools)."),
+    ("llama.cpp ${esc(s.engine_release)}, the official build. Pick the one for your graphics card.",
+     "On Linux the app uses the llama-tts installed on this PC (llama.cpp b10270 or newer, built for your graphics "
+     "card). There is nothing to download here: install it with your package manager, then press Check again."),
+]
+
+# Edits to the page's script where a text is not enough: no Download button for things that can't be downloaded.
+# The old strings must match studio/web/app.js exactly; test_smoke.py fails when upstream changes them.
+JS_PATCHES = [
+    ("else acts = `<button class=\"btn sm accent\" data-t=\"download\"",
+     "else if (t.system_only) acts = `<span class=\"chip warn\">Not found on this PC</span>`;\n  "
+     "else acts = `<button class=\"btn sm accent\" data-t=\"download\""),
+    ("else acts = `<button class=\"btn sm ${e.recommended ? 'accent' : ''}\" data-e=\"download\"",
+     "else if (!e.size) acts = `<span class=\"chip warn\">Not found on this PC</span>`;\n    "
+     "else acts = `<button class=\"btn sm ${e.recommended ? 'accent' : ''}\" data-e=\"download\""),
 ]
 
 
@@ -354,6 +458,12 @@ def _linux_text(text: str) -> str:
     for old, new in TEXTS:
         text = text.replace(old, new)
     return text
+
+
+def _linux_script(text: str) -> str:
+    for old, new in JS_PATCHES:
+        text = text.replace(old, new)
+    return _linux_text(text)
 
 
 def _patch_web() -> None:
@@ -367,8 +477,16 @@ def _patch_web() -> None:
 
         @app.middleware("http")
         async def linux_wording(request, call_next):
-            if request.url.path != "/app.js":
+            if request.url.path != "/app.js" and not request.url.path.startswith("/api/"):
                 return await call_next(request)
+            if request.url.path.startswith("/api/"):
+                # only error messages are reworded (e.g. "download ffmpeg on the Models page"); other answers pass through
+                resp = await call_next(request)
+                if resp.status_code < 400 or "json" not in resp.headers.get("content-type", ""):
+                    return resp
+                body = b"".join([chunk async for chunk in resp.body_iterator])
+                headers = {k: v for k, v in resp.headers.items() if k.lower() != "content-length"}
+                return Response(_linux_text(body.decode("utf-8")), status_code=resp.status_code, headers=headers)
             # a "not modified" answer would keep serving the browser's old, unrewritten copy
             request.scope["headers"] = [(k, v) for k, v in request.scope["headers"]
                                         if k not in (b"if-none-match", b"if-modified-since")]
@@ -376,7 +494,7 @@ def _patch_web() -> None:
             body = b"".join([chunk async for chunk in resp.body_iterator])
             skip = {"content-length", "etag", "last-modified"}
             headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip}
-            return Response(_linux_text(body.decode("utf-8")), status_code=resp.status_code, headers=headers)
+            return Response(_linux_script(body.decode("utf-8")), status_code=resp.status_code, headers=headers)
 
         return app
 
@@ -395,6 +513,7 @@ def apply() -> None:
     _patch_config()
     _patch_misc()
     _patch_hardware()
+    _patch_tools()
     _patch_autostart()
     _patch_updater()
     _patch_engine()

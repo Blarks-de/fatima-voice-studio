@@ -2,7 +2,7 @@
 Type=Application
 Name=Fatima Voice Studio
 Comment=Voiceovers and voice cloning on this PC
-Exec=@DIR@/fatima-voice-studio
+Exec=@EXEC@
 Terminal=false
 Categories=AudioVideo;Audio;
 Icon=audio-input-microphone

@@ -1,159 +1,188 @@
-# Fatima Voice Studio unter Linux
+# Fatima Voice Studio on Linux
 
-Fatima Voice Studio ist upstream eine reine Windows-App. Dieser Ordner enthält alles, was nötig ist, um sie unter
-Linux zu betreiben. **Der Ordner `studio/` bleibt unverändert**; eine Kompatibilitätsschicht (`compat.py`) ersetzt
-beim Start die Windows-Teile. So lassen sich Upstream-Änderungen per `git pull` übernehmen.
+Upstream, Fatima Voice Studio is a Windows-only app. This folder holds everything needed to run it on Linux.
+**The `studio/` folder is not modified**: a compatibility layer (`compat.py`) replaces the Windows-specific parts at
+startup, so upstream changes can be picked up with a plain `git pull`.
 
-Getestet auf CachyOS (Arch), Python 3.13, RTX 4070 Ti SUPER, `llama.cpp-cuda` b10689 (Stand 2026-10-08).
+## Tested status
 
-## Schnellstart
+Honest overview of what has and hasn't been verified. "Re-run pending" means it worked before the latest changes
+(rebase onto upstream 0.2.4 and the fixes from the PR review) and still has to be repeated on the GPU machine.
+
+| Area | Status |
+|---|---|
+| `test_smoke.py` (static + runtime + web checks), `setup.sh` syntax, generated `.desktop`/`.service` files incl. install paths with spaces | **Tested** after the latest changes (Debian 13, no GPU) |
+| No Windows ffmpeg/Whisper download is offered or started; system ffmpeg wins over a stray `ffmpeg.exe`; no Download button for the System engine | **Tested** by the smoke test (HTTP-level, no real download) |
+| Whisper build (`build-whisper.sh`), transcription, subtitle timing, `[pause]` scripts, language auto-detection | **Tested** on CPU, Debian 13 (before the latest changes) |
+| Full TTS run, voice cloning, English and German batch with `[pause]`, WAV + MP3 + SRT, abort and resume, `kill -9` cleanup | **Tested** on CachyOS (Arch), RTX 4070 Ti SUPER, `llama.cpp-cuda` b10689 (2026-10-08). **Re-run pending** after the rebase |
+| MP4 and M4A decoded through the system ffmpeg (`media.decode`, `to_wav16k`) with a stray `ffmpeg.exe` present | **Tested** (generated test clips, Debian 13, no GPU) |
+| Full TTS + Whisper batch in one go, video/M4A input inside a real batch/transcription run | **Not tested yet** (needs the GPU machine) |
+| Tray icon visibility in the KDE panel, Browse dialog (zenity/kdialog), `xdg-open` buttons | Not tested (needs a screen) |
+| systemd service (`./setup.sh --service`) at runtime, `--desktop` menu entry in a desktop session | Not tested at runtime. The generated unit/desktop files were launched with `systemd` / `gio launch` from an install path with spaces |
+| Voice-clip upload with noise removal (voice separator, `sherpa-onnx`) | Not tested |
+| Whisper models larger than `base`, German audio through Whisper | Not tested |
+
+## Quick start
 
 ```bash
 cd ~/fatima-voice-studio/linux
-./setup.sh                  # venv + Abhängigkeiten + Check der Werkzeuge
-./build-whisper.sh          # nur für Untertitel/Transkripte: baut whisper-cli nach linux/bin/ (~1 Min)
-./fatima-voice-studio       # startet und öffnet http://127.0.0.1:9830/
+./setup.sh                  # venv + dependencies + a check of the tools
+./build-whisper.sh          # only for subtitles/transcripts: builds whisper-cli into linux/bin/ (~1 min)
+./fatima-voice-studio       # starts and opens http://127.0.0.1:9830/
 ```
 
-Beim ersten Start in der App: **Setup** öffnen, Sprachmodell herunterladen (Qwen3-TTS Q8, 2,3 GB, oder Q4,
-1 GB) und für Untertitel ein Whisper-Modell (small, 190 MB). Die Downloads laufen über die App selbst
-(fortsetzbar, SHA-256-geprüft). Danach unter **Voices** eine Stimme anlegen (Clip hochladen oder
-„Find a new voice“) und unter **Create** loslegen.
+On the first start, open **Setup** in the app and download the voice model (Qwen3-TTS Q8, 2.3 GB, or Q4, 1 GB)
+and, for subtitles, a Whisper model (small, 190 MB). Downloads run inside the app (resumable, SHA-256 checked).
+Then create a voice under **Voices** (upload a clip or "Find a new voice") and start on **Create**.
 
-Für die Engine muss nichts heruntergeladen werden: Die App nutzt das `llama-tts` aus dem System.
+Three programs are **never downloaded** by the app on Linux; install them on the system instead:
 
-## Starten und Beenden
-
-| Befehl | Wirkung |
+| Program | How |
 |---|---|
-| `./fatima-voice-studio` | startet mit **Tray-Icon** (Rechtsklick → Quit) und öffnet den Browser; Strg+C im Terminal beendet auch |
-| `./fatima-voice-studio --no-tray` | ohne Tray-Icon (für Server, systemd) |
-| `./fatima-voice-studio --stop` | beendet eine laufende Instanz, egal wie sie gestartet wurde |
-| `./fatima-voice-studio --no-browser` | Browser nicht öffnen (kombinierbar) |
+| `llama-tts` (the speech engine) | install llama.cpp (see Requirements). The Setup page shows the "System" engine without a Download button |
+| `whisper-cli` (subtitles, transcripts) | `./build-whisper.sh`. Downloading a Whisper *model* in the app works as usual; the Setup page warns until `whisper-cli` exists |
+| `ffmpeg` (video files, M4A/AAC input) | your package manager (`sudo pacman -S ffmpeg`, `sudo apt install ffmpeg`). The Models page (Tools) shows "Not found on this PC" until it is installed |
 
-Das Tray-Icon nutzt AppIndicator (KDE, GNOME mit Erweiterung). Dafür braucht das venv `pygobject`, das `setup.sh`
-installiert (baut aus dem Quellcode: `gobject-introspection`, `cairo`, `pkgconf`). Fehlt `pygobject`, startet die App ohne Tray und weist darauf hin; beenden dann mit Strg+C oder `--stop`.
+The upstream app would fetch Windows builds of these (`ffmpeg.exe`, `whisper-bin-x64.zip`), which cannot run here.
+`compat.py` switches that off. An `ffmpeg.exe` left in `engine/ffmpeg/` by an earlier download is ignored.
 
-## Voraussetzungen
+## Starting and stopping
 
-| Was | Wofür | Arch-Paket |
+| Command | Effect |
+|---|---|
+| `./fatima-voice-studio` | starts with a **tray icon** (right-click → Quit) and opens the browser; Ctrl+C in the terminal also quits |
+| `./fatima-voice-studio --no-tray` | without a tray icon (for servers, systemd) |
+| `./fatima-voice-studio --stop` | stops a running instance, however it was started |
+| `./fatima-voice-studio --no-browser` | don't open the browser (can be combined) |
+
+The tray icon uses AppIndicator (KDE; GNOME with an extension). That needs `pygobject` in the venv, which `setup.sh`
+installs (it builds from source and needs `gobject-introspection`, `cairo`, `pkgconf`). Without `pygobject` the app
+starts without a tray icon and says so; quit it with Ctrl+C or `--stop`.
+
+## Requirements
+
+| What | Used for | Arch package |
 |---|---|---|
-| `uv` | venv mit Python 3.13 | `uv` |
-| `gobject-introspection`, `cairo`, `pkgconf` | baut `pygobject` für das Tray-Icon (optional) | gleichnamig |
-| `llama-tts` | Sprachausgabe (Qwen3-TTS) | `llama.cpp-cuda` (NVIDIA) oder `llama.cpp-vulkan` (AMD/Intel) |
-| `whisper-cli` | Untertitel, Transkripte | `./build-whisper.sh` (das Arch-Paket `whisper-cpp` kollidiert mit `llama.cpp-cuda`, beide bringen `ggml` mit) |
-| `ffmpeg` | Video-Dateien, M4A/AAC einlesen | `ffmpeg` |
-| `setpriv` (util-linux) | Engine endet mit der App | `util-linux` |
-| `gio` oder `trash-cli` | Löschen in den Papierkorb | `glib2` / `trash-cli` |
-| `zenity` oder `kdialog` | „Browse“-Knopf in den Einstellungen | `zenity` / `kdialog` |
-| `notify-send` | Benachrichtigung, wenn ein Batch fertig ist | `libnotify` |
-| `wl-copy`/`xclip`/`xsel` | Zwischenablage im Tray-Menü | `wl-clipboard` / `xclip` |
+| `uv` | venv with Python 3.13 | `uv` |
+| `gobject-introspection`, `cairo`, `pkgconf` | builds `pygobject` for the tray icon (optional) | same names |
+| `llama-tts` | speech output (Qwen3-TTS) | `llama.cpp-cuda` (NVIDIA) or `llama.cpp-vulkan` (AMD/Intel) |
+| `whisper-cli` | subtitles, transcripts | `./build-whisper.sh` (the Arch package `whisper-cpp` conflicts with `llama.cpp-cuda`, both ship `ggml`) |
+| `ffmpeg` | reading video files and M4A/AAC | `ffmpeg` |
+| `setpriv` (util-linux) | the engine ends with the app | `util-linux` |
+| `gio` or `trash-cli` | deleting to the trash | `glib2` / `trash-cli` |
+| `zenity` or `kdialog` | "Browse" button in Settings | `zenity` / `kdialog` |
+| `notify-send` | notification when a batch is done | `libnotify` |
+| `wl-copy`/`xclip`/`xsel` | clipboard in the tray menu | `wl-clipboard` / `xclip` |
 
-Das `llama-tts` muss Qwen3-TTS können: mindestens **b10270** (4. Aug 2026), ältere Builds haben eine andere
-Kommandozeile. Geprüft ist b10689; die Windows-Version der App ist auf b11476 gepinnt. `setup.sh` warnt, wenn das
-`llama-tts` älter ist (`LLAMA_MIN_BUILD` am Anfang des Skripts). Läuft ein Modell nicht, zuerst `llama-tts` aktualisieren.
+`llama-tts` has to support Qwen3-TTS: at least **b10270** (4 Aug 2026); older builds have a different command line.
+Verified with b10689; the Windows version of the app pins b11476. `setup.sh` warns if `llama-tts` is older
+(`LLAMA_MIN_BUILD` at the top of the script). If a model won't run, update `llama-tts` first.
 
-Python 3.14 geht nicht (für `sherpa-onnx`/`lameenc` gibt es noch keine Wheels), deshalb legt `setup.sh` das venv
-mit 3.13 an.
+Python 3.14 doesn't work (no wheels for `sherpa-onnx`/`lameenc` yet), which is why `setup.sh` creates the venv with 3.13.
 
-## Dateien in diesem Ordner
+## Files in this folder
 
-| Datei | Zweck |
+| File | Purpose |
 |---|---|
-| `build-whisper.sh` | baut `whisper-cli` (CPU, statisch) nach `bin/` |
-| `setup.sh` | Einrichtung; `--service` (systemd), `--desktop` (Menüeintrag) |
-| `fatima-voice-studio` | Startskript (Tray ist Standard; `--no-tray`, `--stop`, `--no-browser`, `--check`) |
-| `run.py` | Einstieg: lädt `compat.py`, dann das normale `studio.__main__` |
-| `compat.py` | Die Kompatibilitätsschicht (siehe `ARCHITECTURE.md`) |
-| `mcp_stdio.py` | stdio-MCP-Start für Agenten (Claude Code …) |
-| `requirements-linux.txt` | Abhängigkeiten ohne `pywin32` |
-| `systemd/`, `desktop/` | Vorlagen für Dienst und Menüeintrag |
-| `.venv/` | Python-Umgebung (nicht in git) |
-| `ARCHITECTURE.md` | Aufbau und Datenfluss mit Diagramm |
+| `build-whisper.sh` | builds `whisper-cli` (CPU, static) into `bin/` |
+| `setup.sh` | setup; `--service` (systemd), `--desktop` (menu entry). Both work from an install path with spaces |
+| `fatima-voice-studio` | launcher (tray is the default; `--no-tray`, `--stop`, `--no-browser`, `--check`) |
+| `run.py` | entry point: loads `compat.py`, then the normal `studio.__main__` |
+| `compat.py` | the compatibility layer (see `ARCHITECTURE.md`) |
+| `test_smoke.py` | checks that the layer still fits `studio/` (see "Update and maintenance") |
+| `mcp_stdio.py` | stdio MCP launcher for agents (Claude Code …) |
+| `requirements-linux.txt` | dependencies without `pywin32` |
+| `systemd/`, `desktop/` | templates for the service and the menu entry (`@EXEC@` is replaced by the quoted launcher path) |
+| `.venv/` | Python environment (not in git) |
+| `ARCHITECTURE.md` | structure and data flow with a diagram |
 
-## Wo liegen die Daten?
+## Where is the data?
 
-Nichts im Repo. Standard:
+Nothing in the repo. Defaults:
 
-| Was | Ort |
+| What | Location |
 |---|---|
-| Einstellungen, API-Key, Logs | `~/.local/share/fatima-voice-studio/data/` |
-| Modelle | `~/.local/share/fatima-voice-studio/models/` |
-| Stimmen-Bibliothek | `~/.local/share/fatima-voice-studio/voices/` |
-| Engine-Links (`llama-tts`, `whisper-cli`) | `~/.local/share/fatima-voice-studio/engine/` |
-| Batches, Exporte (Audio) | `~/Music/Fatima Voice Studio/{Batches,Exports}` |
+| Settings, API key, logs | `~/.local/share/fatima-voice-studio/data/` |
+| Models | `~/.local/share/fatima-voice-studio/models/` |
+| Voice library | `~/.local/share/fatima-voice-studio/voices/` |
+| Engine links (`llama-tts`, `whisper-cli`) | `~/.local/share/fatima-voice-studio/engine/` |
+| Batches, exports (audio) | `~/Music/Fatima Voice Studio/{Batches,Exports}` |
 
-Umgebungsvariablen:
+Environment variables:
 
-| Variable | Wirkung |
+| Variable | Effect |
 |---|---|
-| `FVS_HOME` | anderer Datenordner. Er muss auf demselben Laufwerk wie `~` liegen, sonst klappt der Papierkorb nicht |
-| `XDG_MUSIC_DIR` | Basis für Batches/Exporte |
-| `FVS_LLAMA_TTS` | Pfad zu einem anderen `llama-tts` (z. B. selbst gebaut) |
-| `FVS_WHISPER_CLI` | Pfad zu einem anderen `whisper-cli` (sonst: `linux/bin/`, dann `PATH`) |
+| `FVS_HOME` | different data folder. It has to be on the same drive as `~`, otherwise moving to the trash fails |
+| `XDG_MUSIC_DIR` | base for batches/exports |
+| `FVS_LLAMA_TTS` | path to a different `llama-tts` (e.g. self-built) |
+| `FVS_WHISPER_CLI` | path to a different `whisper-cli` (otherwise: `linux/bin/`, then `PATH`) |
 
-Die Links in `engine/` legt `compat.py` bei jedem Start neu an, ein Update von `llama.cpp` braucht also nichts weiter.
+`compat.py` recreates the links in `engine/` on every start, so updating `llama.cpp` needs nothing else.
 
 ## Autostart
 
-- **systemd (empfohlen):** `./setup.sh --service`, danach `systemctl --user status fatima-voice-studio`,
-  Logs mit `journalctl --user -u fatima-voice-studio`. Läuft mit `--no-tray --no-browser`.
-- **Desktop-Autostart:** Der Schalter „Start with Windows“ in den Einstellungen legt
-  `~/.config/autostart/fatima-voice-studio.desktop` an (die Beschriftung ist Upstream-Text).
-- **Menüeintrag:** `./setup.sh --desktop`.
+- **systemd (recommended):** `./setup.sh --service`, then `systemctl --user status fatima-voice-studio`, logs with
+  `journalctl --user -u fatima-voice-studio`. Runs with `--no-tray --no-browser`.
+- **Desktop autostart:** the "Start at login" switch in Settings creates `~/.config/autostart/fatima-voice-studio.desktop`.
+- **Menu entry:** `./setup.sh --desktop`.
 
-## Agenten / MCP
+## Agents / MCP
 
-Der MCP-Endpunkt hängt direkt am laufenden Server: `http://127.0.0.1:9830/mcp`, Header
-`Authorization: Bearer <API-Key>` (Key: Einstellungen oder `data/config.json`). Für Claude Code:
+The MCP endpoint is part of the running server: `http://127.0.0.1:9830/mcp`, header
+`Authorization: Bearer <API key>` (key: Settings or `data/config.json`). For Claude Code:
 
 ```bash
-claude mcp add --transport http fatima http://127.0.0.1:9830/mcp --header "Authorization: Bearer <API-Key>"
+claude mcp add --transport http fatima http://127.0.0.1:9830/mcp --header "Authorization: Bearer <API key>"
 ```
 
-Alternativ per stdio (die App muss laufen):
+Alternatively over stdio (the app has to be running):
 `~/fatima-voice-studio/linux/.venv/bin/python ~/fatima-voice-studio/linux/mcp_stdio.py`.
 
-## Unterschiede zu Windows
+## Differences from Windows
 
-- Es gibt eine einzige Engine „System“; die Windows-Downloads (CUDA/Vulkan/CPU-ZIPs) entfallen. Ob GPU oder
-  CPU gerechnet wird, hängt vom installierten `llama.cpp` ab.
-- Updates: aus (`git pull` im Projekt). Die Update-Seite zeigt dazu einen Hinweis.
-- Stirbt die App hart, beendet der Kernel auch `llama-tts` (`setpriv --pdeathsig`, wie das Job Object unter Windows).
-- Das Tray-Icon ist Standard und nur da, wenn der Desktop AppIndicator kann (KDE: ja, GNOME: Erweiterung). 
-  Benachrichtigungen („Batch fertig“) laufen über `notify-send`.
-- Sichtbare „Windows“-Texte der Oberfläche („Start with Windows“, „Recycle Bin“ …) werden beim Ausliefern umgeschrieben
-  („Start at login“, „Trash“). Die Liste steht in `compat.py` (`TEXTS`); `studio/web/` bleibt unverändert.
+- There is a single engine, "System"; the Windows downloads (CUDA/Vulkan/CPU zips) don't apply. Whether the GPU or the
+  CPU does the work depends on the installed `llama.cpp`. The Setup page offers no download for it.
+- ffmpeg and `whisper-cli` come from the system / `build-whisper.sh`, see "Quick start".
+- Updates: off (`git pull` in the project). The Updates page says so.
+- If the app dies hard, the kernel also ends `llama-tts` (`setpriv --pdeathsig`, like the job object on Windows).
+  `whisper-cli` is not started that way: it is short-lived, so a crash can at worst leave one finished-soon process.
+- The tray icon is the default and only appears if the desktop supports AppIndicator (KDE: yes, GNOME: extension).
+  Notifications ("batch done") go through `notify-send`.
+- Visible "Windows" texts in the interface ("Start with Windows", "Recycle Bin" …) are rewritten on the way out
+  ("Start at login", "Trash"). The list is `TEXTS` in `compat.py`; `studio/web/` stays untouched. Some upstream
+  wording remains, for example the "Open in File Explorer" tooltip.
 
-## Fehlersuche
+## Troubleshooting
 
-| Symptom | Ursache / Abhilfe |
+| Symptom | Cause / fix |
 |---|---|
-| `tensor … not within the file bounds` | Modell-Download unvollständig. In der App neu laden (setzt fort) |
-| „No voice: pass a voice name …“ | Zuerst eine Stimme anlegen (Voices) oder eine Standardstimme setzen |
-| Setup zeigt „No engine installed“ | `llama-tts` nicht im `PATH`. `which llama-tts` oder `FVS_LLAMA_TTS` setzen |
-| Keine Untertitel | `whisper-cli` fehlt (`./build-whisper.sh`) oder kein Whisper-Modell geladen |
-| Löschen schlägt fehl („Papierkorb … Einhängepunkte“) | `FVS_HOME` liegt nicht auf demselben Laufwerk wie `~` |
-| Port belegt | In den Einstellungen `port` ändern (Neustart nötig) |
-| Engine-Fehler im Detail | `~/.local/share/fatima-voice-studio/data/logs/engine.log` und `studio.log` |
+| `tensor … not within the file bounds` | incomplete model download. Download it again in the app (it resumes) |
+| "No voice: pass a voice name …" | create a voice first (Voices) or set a default voice |
+| Setup shows "No engine installed" / System engine "Not found on this PC" | `llama-tts` is not on `PATH`. Check `which llama-tts` or set `FVS_LLAMA_TTS`, then press "Check again" |
+| No subtitles; Setup warns about `whisper-cli` | run `./build-whisper.sh`, press "Check again". Also needs a Whisper model |
+| Video/M4A files can't be read; Tools shows "Not found on this PC" | install `ffmpeg` with your package manager, reload the page |
+| Deleting fails ("trash … mount points") | `FVS_HOME` is not on the same drive as `~` |
+| Port in use | change `port` in Settings (restart needed) |
+| Engine errors in detail | `~/.local/share/fatima-voice-studio/data/logs/engine.log` and `studio.log` |
 
-## Update und Wartung
-
-```bash
-cd ~/fatima-voice-studio && git pull        # Upstream übernehmen
-linux/setup.sh                              # falls sich requirements.txt geändert hat
-```
-
-Nach einem Upstream-Update prüfen: `linux/fatima-voice-studio --check` und den Smoke-Test:
+## Update and maintenance
 
 ```bash
-.venv/bin/python linux/test_smoke.py        # oder: .venv/bin/python -m pytest linux/test_smoke.py
+cd ~/fatima-voice-studio && git pull        # take over upstream
+linux/setup.sh                              # if requirements.txt changed
 ```
 
-Die Schicht hängt an diesen Namen in `studio/`: `config` (HOME, DATA, DEFAULTS, ENGINES …), `hardware`
-(`_registry_gpus`, `_ram_gb`, `_cpu`, `on_battery`), `autostart`, `updater.Updater`, `studio.trash`, `studio.winui`,
-`tray.copy`. Der Test prüft, dass es sie noch gibt und dass `compat.py` sie tatsächlich ersetzt (auch dort, wo
-`app.py`, `store.py` & Co. sie per `from … import` binden), außerdem die `llama-tts`-Kommandozeile aus `engine.py`
-und den Wortlaut der Weboberfläche. Er braucht weder GPU noch `llama-tts` noch Display (der Tray-Test wird ohne
-Display übersprungen) und schreibt nur in einen temporären Ordner. Schlägt er an, muss `compat.py` angepasst
-werden, oder Upstream baut einen Hook.
+After an upstream update, run `linux/fatima-voice-studio --check` and the smoke test:
+
+```bash
+.venv/bin/python linux/test_smoke.py        # or: .venv/bin/python -m pytest linux/test_smoke.py
+```
+
+The layer depends on these names in `studio/`: `config` (HOME, DATA, DEFAULTS, ENGINES, TOOLS …), `hardware`
+(`_registry_gpus`, `_ram_gb`, `_cpu`, `on_battery`, `warnings`), `autostart`, `updater.Updater`, `media`
+(`ffmpeg_exe`, `ffmpeg_source`), `downloads.Downloads` (`tools`, `start_tool`, `delete_tool`, `start_engine`,
+`_whisper_missing`), `studio.trash`, `studio.winui`, `tray.copy`, plus a few lines of `studio/web/app.js`. The test
+checks that they still exist and that `compat.py` really replaces them (also where `app.py`, `store.py` & co. bind them
+with `from … import`), the `llama-tts` command line from `engine.py`, and the wording of the web interface. It needs no
+GPU, no `llama-tts` and no display (the tray test is skipped without one) and writes only to a temporary folder. If it
+fails, `compat.py` has to be adjusted, or upstream adds a hook.
