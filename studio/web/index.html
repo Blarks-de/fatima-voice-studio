@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fatima Voice Studio</title>
 <link rel="icon" href="icon.png">
+<script>try { const t = localStorage.getItem('fvs-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch { /* storage off */ }</script>
 <link href="fonts.css" rel="stylesheet">
 <link rel="stylesheet" href="app.css">
 </head>
@@ -199,7 +200,7 @@
     <button type="button" class="text-btn" id="select-all">Select all shown</button>
     <button type="button" class="btn red sm" id="bulk-delete" disabled>Delete selected</button>
   </div>
-  <div class="batch-list" id="batch-list"></div>
+  <div class="batch-list" id="batch-list"><div class="skel-list"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
 </main>
 
 <!-- ============ ONE BATCH ============ -->
@@ -213,7 +214,7 @@
     <div class="row wrap" id="b-actions"></div>
   </div>
   <div class="progress" id="b-progress"><div></div></div>
-  <div class="scripts-view" id="b-scripts"></div>
+  <div class="scripts-view" id="b-scripts"><div class="skel-list"><div class="skel" style="height:160px"></div><div class="skel" style="height:160px"></div></div></div>
 </main>
 
 <!-- ============ VOICES ============ -->
@@ -233,7 +234,7 @@
         <span data-icon="upload"></span>
         <span id="voice-drop-text">Drop an audio or video file here, or click to choose<br><small>6–15 seconds of one person speaking clearly — or a longer recording: the best part is picked for you</small></span>
       </label>
-      <audio id="voice-file-preview" controls hidden></audio>
+      <div id="voice-file-preview" hidden></div>
       <div class="pair">
         <div class="field"><label class="label" for="voice-name">Name</label><input class="input" id="voice-name" placeholder="e.g. Narrator Laura" maxlength="60"></div>
         <div class="field" style="flex:0 0 150px"><label class="label" for="voice-lang">Language</label>
@@ -245,6 +246,7 @@
       <label class="check"><input type="checkbox" id="voice-denoise"> Reduce background noise</label>
       <label class="check consent"><input type="checkbox" id="voice-consent"> This is my own voice, or I have the speaker's permission to use it.</label>
       <button type="button" class="btn accent block" id="voice-add" disabled>Add voice</button>
+      <p class="form-hint" id="voice-add-hint"></p>
     </section>
 
     <section class="card find-voice" id="find-voice">
@@ -260,7 +262,7 @@
       <div class="found" id="found-list"></div>
     </section>
   </div>
-  <div class="voice-cards" id="voice-cards"></div>
+  <div class="voice-cards" id="voice-cards"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
 </main>
 
 <!-- ============ MODELS ============ -->
@@ -351,7 +353,7 @@
     </section>
   </div>
   <div class="group-title">Transcripts</div>
-  <div class="batch-list" id="t-list"></div>
+  <div class="batch-list" id="t-list"><div class="skel-list"><div class="skel"></div></div></div>
 </main>
 
 <!-- ============ CONNECT ============ -->
@@ -373,7 +375,7 @@
       <p class="lede">Defaults for new scripts, output files, folders and updates.</p>
     </div>
   </div>
-  <div id="settings-body"></div>
+  <div id="settings-body"><div class="skel-cols"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
 </main>
 
 <!-- ============ HELP ============ -->

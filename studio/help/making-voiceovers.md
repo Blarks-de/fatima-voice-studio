@@ -121,6 +121,7 @@ The **Queue** card on the right of the Create page shows batches waiting or bein
 - how many parts are done and about how long is left.
 
 Batches are spoken one part at a time, in queue order. Below the queue are your most recent batches.
+At the top, three tiles show how much audio you made **today**, **this week** (since Monday) and **in all**.
 
 ## Next
 

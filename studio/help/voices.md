@@ -61,7 +61,8 @@ Each voice has a card with its clip, its language and length, and:
 - **Hear it speak** — reads a sample sentence in the voice's language, so you hear the voice as the model makes it
   (not just the original clip).
 - **Edit** — change the name, language or notes, or prepare the clip again (below).
-- **Make default** — the voice picked for you on the Create page. The default voice has a *Default* label.
+- **Make default** (star icon) — the voice picked for you on the Create page. The default voice has a *Default*
+  label and a filled star.
 - **Delete** (bin icon) — the voice's folder goes to the Windows Recycle Bin. Voiceovers already made with it are
   kept.
 

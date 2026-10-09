@@ -45,7 +45,8 @@ it is. The buttons:
 - **Output** — change speed, loudness and files afterwards (see below).
 - **Folder**, **Re-run**, and **Delete** (bin icon, only when the batch isn't working).
 
-Below, each script has its own card: a player for the finished voiceover, buttons to download its **WAV**, **MP3**
+Below, each script has its own card: a player for the finished voiceover (click or drag on its waveform to jump
+to any moment; only one player plays at a time), buttons to download its **WAV**, **MP3**
 and **SRT**, and details: its voice and language, how many parts, its length, the loudness, and
 **Whisper heard 98%**: how many of the script's words Whisper recognised in the audio. Close to 100% is good.
 

@@ -62,7 +62,8 @@ function toast(msg, ok = false) {
   const t = $('toast');
   const host = [...document.querySelectorAll('dialog[open]')].pop() || document.body;
   if (t.parentElement !== host) host.append(t);
-  t.textContent = msg; t.className = 'toast' + (ok ? ' ok' : ''); t.hidden = false;
+  t.innerHTML = `${icon(ok ? 'check' : 'alert')}<span>${esc(msg)}</span>`; t.className = 'toast' + (ok ? ' ok' : ''); t.hidden = false;
+  t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';  // slide in again for each message
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, ok ? 2600 : 7000);
 }
 const run = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message); } };
@@ -99,6 +100,168 @@ const fmtSize = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : b >= 1e6 ? `${
 const langName = (code) => S.state?.languages?.[code] || code || '—';
 const voiceName = (id) => S.voices.find((v) => v.id === id)?.name || (id ? id : 'no voice');
 const fileUrl = (b, rel, v, dl) => `/api/batches/${b}/files/${rel.split('/').map(encodeURIComponent).join('/')}?v=${encodeURIComponent(v || '')}${dl ? '&download=1' : ''}`;
+
+// ---------- theme ----------
+// Light, dark, or the same as Windows (''). Kept in this browser; index.html applies it before the page draws.
+const THEME = 'fvs-theme';
+function themePick() { try { return localStorage.getItem(THEME) || ''; } catch { return ''; } }
+function setTheme(t) {
+  try { if (t) localStorage.setItem(THEME, t); else localStorage.removeItem(THEME); } catch { /* storage off */ }
+  if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+  apRedrawAll();
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => apRedrawAll());
+
+// ---------- audio players ----------
+// Every player is ours: a hidden <audio>, a play button, a waveform to click or drag, and the time. The markup is a
+// plain string (so setHtml can compare it); the waveform is drawn once the player scrolls into view.
+const player = (src, { autoplay = false, small = false } = {}) => `<div class="ap${small ? ' sm' : ''}">
+  <audio preload="metadata" src="${esc(src)}"${autoplay ? ' autoplay' : ''}></audio>
+  <button class="ap-play" type="button" aria-label="Play">${icon('play', 'i-play')}${icon('pause', 'i-pause')}</button>
+  <div class="ap-wave" role="slider" tabindex="0" aria-label="Position" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><canvas></canvas></div>
+  <span class="ap-time"><b>0:00</b> / 0:00</span></div>`;
+
+const AP = { peaks: new Map(), queue: [], loading: 0 };
+const apAudio = (ap) => ap.querySelector('audio');
+const apFrac = (ap) => { const a = apAudio(ap); return a.duration ? a.currentTime / a.duration : 0; };
+function apTime(ap) {
+  const a = apAudio(ap), wave = ap.querySelector('.ap-wave');
+  const dur = Number.isFinite(a.duration) ? a.duration : 0;
+  ap.querySelector('.ap-time').innerHTML = `<b>${fmtClock(a.currentTime)}</b> / ${fmtClock(dur)}`;
+  wave.setAttribute('aria-valuemax', Math.round(dur)); wave.setAttribute('aria-valuenow', Math.round(a.currentTime));
+  wave.setAttribute('aria-valuetext', `${fmtClock(a.currentTime)} of ${fmtClock(dur)}`);
+}
+function apDraw(ap) {
+  const cv = ap?.querySelector('canvas'); if (!cv) return;
+  const w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  const css = getComputedStyle(ap), accent = css.getPropertyValue('--accent').trim(), rest = css.getPropertyValue('--wave').trim();
+  const peaks = AP.peaks.get(apAudio(ap).getAttribute('src'));
+  const played = apFrac(ap) * w, hover = ap._hover == null ? -1 : ap._hover * w;
+  if (peaks === null) {  // couldn't read the audio: a plain track
+    ctx.fillStyle = rest; ctx.beginPath(); ctx.roundRect(0, h / 2 - 2, w, 4, 2); ctx.fill();
+    ctx.fillStyle = accent; ctx.beginPath(); ctx.roundRect(0, h / 2 - 2, played, 4, 2); ctx.fill();
+    return;
+  }
+  const step = 3, n = Math.max(1, Math.floor(w / step));
+  for (let i = 0; i < n; i++) {
+    let v = 0.07;  // flat while the waveform loads
+    if (peaks) {
+      const a = Math.floor(i * peaks.length / n), b = Math.max(a + 1, Math.floor((i + 1) * peaks.length / n));
+      v = 0; for (let k = a; k < b; k++) v = Math.max(v, peaks[k]);
+    }
+    const bh = Math.max(2, v * h), x = i * step;
+    ctx.fillStyle = x < played || x < hover ? accent : rest;
+    ctx.globalAlpha = x >= played && x < hover ? 0.4 : 1;
+    ctx.fillRect(x, (h - bh) / 2, 2, bh);
+  }
+  ctx.globalAlpha = 1;
+}
+// Peaks: decoded at a low sample rate (so a 30-minute take is a few MB), 800 buckets, cached by URL (URLs carry a version).
+async function apPeaks(src) {
+  const buf = await (await fetch(src)).arrayBuffer();
+  let audio;
+  for (const rate of [3000, 8000]) {
+    try { audio = await new OfflineAudioContext(1, 1, rate).decodeAudioData(buf.slice(0)); break; } catch { /* try the next rate */ }
+  }
+  if (!audio) throw new Error('undecodable');
+  const data = audio.getChannelData(0), N = 800, per = Math.max(1, Math.floor(data.length / N)), out = new Float32Array(N);
+  let top = 0;
+  for (let i = 0; i < N; i++) {
+    let m = 0;
+    for (let k = i * per, e = Math.min(data.length, k + per); k < e; k++) { const x = Math.abs(data[k]); if (x > m) m = x; }
+    out[i] = m; if (m > top) top = m;
+  }
+  for (let i = 0; i < N; i++) out[i] = top ? Math.pow(out[i] / top, 0.8) : 0;
+  return out;
+}
+function apPump() {
+  while (AP.loading < 2 && AP.queue.length) {
+    const src = AP.queue.shift(); AP.loading++;
+    apPeaks(src).then((p) => AP.peaks.set(src, p), () => AP.peaks.set(src, null)).finally(() => {
+      AP.loading--;
+      document.querySelectorAll('.ap').forEach((ap) => { if (apAudio(ap).getAttribute('src') === src) apDraw(ap); });
+      apPump();
+    });
+  }
+}
+const apSeen = new IntersectionObserver((entries) => entries.forEach((e) => {
+  if (!e.isIntersecting) return;
+  apSeen.unobserve(e.target);
+  const src = apAudio(e.target).getAttribute('src');
+  if (src && !AP.peaks.has(src) && !AP.queue.includes(src)) { AP.queue.push(src); apPump(); }
+}), { rootMargin: '200px' });
+const apSized = new ResizeObserver((entries) => entries.forEach((e) => apDraw(e.target.closest('.ap'))));
+function apInit(root) {
+  root.querySelectorAll('.ap:not([data-init])').forEach((ap) => {
+    ap.dataset.init = '1';
+    apSeen.observe(ap); apSized.observe(ap.querySelector('.ap-wave'));
+    const a = apAudio(ap);
+    if (a.readyState >= 1) apTime(ap);
+    if (!a.paused) ap.classList.add('playing');
+  });
+}
+new MutationObserver((muts) => muts.forEach((m) => m.addedNodes.forEach((n) => { if (n.nodeType === 1 && n.parentElement) apInit(n.parentElement); })))
+  .observe(document.body, { childList: true, subtree: true });
+// While something plays, move the time and the waveform every frame.
+function apTick() {
+  const live = document.querySelectorAll('.ap.playing');
+  live.forEach((ap) => { apTime(ap); apDraw(ap); });
+  if (live.length) requestAnimationFrame(apTick);
+}
+// Media events don't bubble, but they can be caught on the way down.
+['play', 'pause', 'ended', 'loadedmetadata', 'durationchange', 'seeked', 'emptied'].forEach((type) => document.addEventListener(type, (e) => {
+  const ap = e.target.closest?.('.ap'); if (!ap) return;
+  if (type === 'play') {
+    document.querySelectorAll('audio').forEach((o) => { if (o !== e.target && !o.paused) o.pause(); });  // one at a time
+    ap.classList.add('playing'); ap.querySelector('.ap-play').setAttribute('aria-label', 'Pause');
+    ap.closest('.seg-row')?.classList.add('speaking');
+    requestAnimationFrame(apTick);
+  } else if (type === 'pause' || type === 'ended' || type === 'emptied') {
+    ap.classList.remove('playing'); ap.querySelector('.ap-play').setAttribute('aria-label', 'Play');
+    ap.closest('.seg-row')?.classList.remove('speaking');
+  }
+  apTime(ap); apDraw(ap);
+}, true));
+const apToggle = (a) => { if (a.paused) a.play().catch((err) => toast(`Can't play this audio: ${err.message}`)); else a.pause(); };
+document.addEventListener('click', (e) => { const b = e.target.closest('.ap-play'); if (b) apToggle(apAudio(b.closest('.ap'))); });
+function apSeekTo(ap, frac) {
+  const a = apAudio(ap);
+  if (!Number.isFinite(a.duration)) return;
+  a.currentTime = Math.min(Math.max(frac, 0), 1) * a.duration;
+  apTime(ap); apDraw(ap);
+}
+const apAt = (wave, e) => { const r = wave.getBoundingClientRect(); return (e.clientX - r.left) / r.width; };
+document.addEventListener('pointerdown', (e) => {
+  const wave = e.target.closest('.ap-wave'); if (!wave || e.button !== 0) return;
+  const ap = wave.closest('.ap');
+  wave.setPointerCapture(e.pointerId); ap._drag = true; apSeekTo(ap, apAt(wave, e));
+});
+document.addEventListener('pointermove', (e) => {
+  const wave = e.target.closest?.('.ap-wave'); if (!wave) return;
+  const ap = wave.closest('.ap');
+  if (ap._drag) apSeekTo(ap, apAt(wave, e));
+  else if (e.pointerType === 'mouse') { ap._hover = apAt(wave, e); apDraw(ap); }
+});
+document.addEventListener('pointerup', (e) => { const ap = e.target.closest?.('.ap'); if (ap) ap._drag = false; });
+document.addEventListener('pointerout', (e) => {
+  const wave = e.target.closest?.('.ap-wave');
+  if (wave && !wave.contains(e.relatedTarget)) { const ap = wave.closest('.ap'); ap._hover = null; apDraw(ap); }
+});
+const apRedrawAll = () => document.querySelectorAll('.ap').forEach(apDraw);
+document.addEventListener('keydown', (e) => {
+  const wave = e.target.closest?.('.ap-wave'); if (!wave) return;
+  const ap = wave.closest('.ap'), a = apAudio(ap);
+  const by = { ArrowLeft: -5, ArrowDown: -5, ArrowRight: 5, ArrowUp: 5 }[e.key];
+  if (by) a.currentTime = Math.max(0, Math.min(a.duration || 0, a.currentTime + by));
+  else if (e.key === 'Home') a.currentTime = 0;
+  else if (e.key === 'End' && a.duration) a.currentTime = a.duration;
+  else if (e.key === ' ' || e.key === 'Enter') apToggle(a);
+  else return;
+  e.preventDefault(); apTime(ap); apDraw(ap);
+});
 const isBusy = (st) => ['running', 'queued', 'finishing'].includes(st);
 
 const STATUS = {
@@ -214,7 +377,10 @@ async function pollState() {
     sub = st.current ? `“${st.current.text}”` : '';
   } else if (st.finishing) { dot = 'busy'; text = 'Writing files · subtitles'; }
   else { text = st.setup_ready ? `Ready · ${eng.engine.toUpperCase()}` : 'Setup needed'; dot = st.setup_ready ? '' : 'off'; }
-  $('engine-text').textContent = text; $('engine-sub').textContent = sub; $('engine-dot').className = `state-dot ${dot}`;
+  const ring = dot === 'busy' && st.current && eng.frames_expected;
+  $('engine-text').textContent = text; $('engine-sub').textContent = sub; $('engine-sub').title = sub;
+  $('engine-dot').className = `state-dot ${dot}${ring ? ' ring' : ''}`;
+  $('engine-dot').style.setProperty('--p', ring ? Math.min(99, Math.round(100 * eng.frames / eng.frames_expected)) : 0);
   $('foot-right').textContent = `v${st.version} · ${st.api_base}`;
   if (st.update?.status === 'available') $('foot-left').innerHTML = `Fatima Voice Studio · <a href="#settings">update ${esc(st.update.latest)} available</a>`;
   renderUpdateBadge();
@@ -276,7 +442,7 @@ function renderScripts() {
         <input class="title" data-f="title" value="${esc(s.title)}" placeholder="Title (optional — taken from the first words)">
         <button type="button" class="icon-btn" data-act="del" aria-label="Remove script">${icon('x')}</button></div>
       <textarea data-f="text" rows="${Math.min(12, Math.max(3, Math.ceil((s.text || '').length / 70)))}" placeholder="Script text. Blank lines start a new paragraph.">${esc(s.text)}</textarea>
-      <div class="row between" style="gap:8px">
+      <div class="foot">
         <span class="meta">${s.text ? `${s.text.length.toLocaleString()} characters · about ${fmtDur(s.text.length / 14)}` : ''}</span>
         <span class="row" style="gap:6px">
           <select class="mini" data-f="voice" aria-label="Voice for this script">${voiceOptions(s.voice || '', { blank: 'Batch voice' })}</select>
@@ -492,7 +658,7 @@ async function renderSingle() {
     <div class="take"><div class="text">${esc(s.text)}</div>`;
   if (s.status === 'done') {
     const main = out.files.mp3 || out.files.wav;
-    html += `<audio controls autoplay src="${fileUrl(d.id, main, v)}"></audio>
+    html += `${player(fileUrl(d.id, main, v), { autoplay: true })}
       <div class="files">${Object.entries(out.files).map(([k, f]) => `<a class="btn sm" href="${fileUrl(d.id, f, v, 1)}" download>${icon('download')} ${k.toUpperCase()}</a>`).join('')}
       <button class="btn sm" data-single="again">${icon('dice')} Another take</button>
       <a class="btn sm" href="#batch/${d.id}">Open in Batches</a></div>
@@ -513,6 +679,17 @@ $('single-out').addEventListener('click', run(async (e) => {
   $('go').click();
 }));
 
+// Audio made today, this week and in all, from the batch list (counted by the day a batch was made).
+function madeStats(batches) {
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  const week = new Date(day); week.setDate(day.getDate() - ((day.getDay() + 6) % 7));  // since Monday
+  const sum = (from) => batches.filter((b) => !from || new Date(b.created) >= from).reduce((t, b) => t + (b.audio_seconds || 0), 0);
+  const all = sum(null);
+  if (!all) return '<p class="made-empty">Your first voiceover will show up here.</p>';
+  const short = (sec) => sec < 60 ? `${Math.round(sec)} s` : sec < 3600 ? `${Math.round(sec / 60)} min` : `${Math.floor(sec / 3600)} h ${Math.round(sec % 3600 / 60)} min`;
+  const tile = (label, sec) => `<div><b>${sec ? short(sec) : '—'}</b><small>${label}</small></div>`;
+  return `<div class="made">${tile('Made today', sum(day))}${tile('This week', sum(week))}${tile('In all', all)}</div>`;
+}
 async function renderQueue() {
   if (S.view !== 'create') return;
   try { S.batches = await api('/api/batches'); } catch { return; }
@@ -526,7 +703,7 @@ async function renderQueue() {
       ${order.includes(b.id) ? `<button class="icon-btn" data-q="up" data-id="${b.id}" ${i === 0 ? 'disabled' : ''} aria-label="Move up">${icon('up')}</button>
       <button class="icon-btn" data-q="${b.paused ? 'resume' : 'pause'}" data-id="${b.id}" aria-label="${b.paused ? 'Resume' : 'Pause'}">${icon(b.paused ? 'play' : 'pause')}</button>` : ''}
     </div>`;
-  setHtml($('queue-list'), (active.length ? active.map(row).join('') : '<p class="help">Nothing waiting. New batches start right away.</p>')
+  setHtml($('queue-list'), madeStats(S.batches) + (active.length ? active.map(row).join('') : '<p class="help">Nothing waiting. New batches start right away.</p>')
     + (recent.length ? `<div class="micro" style="margin-top:12px">Recent</div>${recent.map(row).join('')}` : ''));
 }
 $('queue-list').addEventListener('click', run(async (e) => {
@@ -576,7 +753,8 @@ function renderBatches() {
         ${b.scripts_done ? `<a class="btn sm" href="/api/batches/${b.id}/export.zip?content=final">${icon('download')} ZIP</a>` : ''}
         <button class="btn sm" data-b="rerun" data-id="${b.id}">${icon('refresh')} Re-run</button>
         <button class="icon-btn" data-b="delete" data-id="${b.id}" aria-label="Delete">${icon('trash')}</button></div>`}
-    </div>`).join('') : `<div class="card empty">${q ? 'No batch matches that search.' : 'No batches yet. Make one on the Create page.'}</div>`;
+    </div>`).join('') : (q ? '<div class="card empty">No batch matches that search.</div>'
+      : emptyCard('layers', 'No batches yet', 'Every voiceover you make is kept here as a batch: its files, its parts, and the script to edit later.', '<a class="btn accent" href="#create">Make your first voiceover</a>'));
   setHtml($('batch-list'), html);
   $('bulkbar').hidden = !S.selecting;
   $('bulk-count').textContent = `${S.selected.size} selected`;
@@ -638,14 +816,14 @@ async function loadDetail() {
 function segRow(d, it) {
   const cur = S.state?.current;
   const running = cur && cur.batch === d.id && cur.item === it.id;
-  return `<div class="seg-row${it.check ? ' flag' : ''}${running ? ' running' : ''}" data-item="${it.id}">
+  return `<div class="seg-row st-${it.status}${it.check ? ' flag' : ''}${running ? ' running' : ''}" data-item="${it.id}">
     <span class="k">${it.k}</span>
     <div><div class="txt">${esc(it.text)}</div>
       ${it.spoken ? `<div class="read-as" title="What the voice reads: the pronunciation dictionary and numbers as words. Subtitles keep your text.">Read as: ${esc(it.spoken)}</div>` : ''}
       <div class="sub">${chip(running ? 'running' : it.status)}${it.audio_s ? `<span>${it.audio_s.toFixed(1)} s</span>` : ''}${it.duration ? `<span>made in ${it.duration.toFixed(1)} s</span>` : ''}<span>seed ${it.seed}</span>${it.pause_after ? `<span>then ${it.pause_after} s pause</span>` : ''}</div>
       ${it.check ? `<div class="flag-note">${icon('alert')} ${esc(it.check)}</div>` : ''}
       ${it.error ? `<div class="err-note">${esc(it.error)}</div>` : ''}</div>
-    <div class="tools">${it.status === 'done' ? `<audio controls preload="metadata" src="${fileUrl(d.id, it.file, it.finished)}"></audio>` : ''}
+    <div class="tools">${it.status === 'done' ? player(fileUrl(d.id, it.file, it.finished), { small: true }) : ''}
       <div class="row" style="gap:6px">
         <button class="btn xs" data-seg="regen" ${running ? 'disabled' : ''} title="Speak this part again with a new seed">${icon('dice')} New take</button>
         <button class="btn xs" data-seg="edit" ${running ? 'disabled' : ''}>${icon('pencil')} Edit</button>
@@ -689,9 +867,9 @@ function renderDetail() {
         <span>${plural(s.segments, 'part')}</span><span>${s.chars.toLocaleString()} characters</span>
         ${out.seconds ? `<span>${fmtClock(out.seconds)} long</span>` : `<span>about ${fmtDur(s.estimate_s)}</span>`}
         ${out.lufs_before != null ? `<span>levelled to ${st.loudness ?? -16} LUFS</span>` : ''}
-        ${out.match != null ? `<span title="Share of the script's words Whisper recognised in the audio">Whisper heard ${Math.round(out.match * 100)}%</span>` : ''}
-        ${s.checks ? `<span style="color:var(--warn)">${plural(s.checks, 'part')} to check</span>` : ''}</div>
-      ${s.status === 'done' && main ? `<div class="player"><audio controls preload="metadata" src="${fileUrl(d.id, main, v)}"></audio>
+        ${out.match != null ? `<span class="${out.match >= 0.95 ? 'good' : out.match >= 0.85 ? 'fair' : 'poor'}" title="Share of the script's words Whisper recognised in the audio">Whisper heard ${Math.round(out.match * 100)}%</span>` : ''}
+        ${s.checks ? `<span class="fair">${plural(s.checks, 'part')} to check</span>` : ''}</div>
+      ${s.status === 'done' && main ? `<div class="player">${player(fileUrl(d.id, main, v))}
         <div class="files">${Object.entries(out.files).map(([k, f]) => `<a class="btn sm" href="${fileUrl(d.id, f, v, 1)}" download>${icon('download')} ${k.toUpperCase()}</a>`).join('')}</div></div>` : ''}
       ${out.status === 'failed' ? `<p class="err-note">Writing the files failed: ${esc(out.error)}</p>` : ''}
       <details class="segs" ${open ? 'open' : ''} data-n="${s.n}"><summary>Parts (${s.done}/${s.segments})</summary>
@@ -777,23 +955,33 @@ async function loadVoices() {
   separateHelp();
   renderVoiceCards();
 }
+// A round badge with the voice's initials, in a colour that stays the same for each name.
+function avatar(name) {
+  const words = String(name || '?').trim().split(/\s+/);
+  const initials = (words[0][0] + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+  let h = 0; for (const c of String(name)) h = (h * 31 + c.codePointAt(0)) % 360;
+  return `<span class="avatar" style="--h:${h}" aria-hidden="true">${esc(initials)}</span>`;
+}
+const emptyCard = (pic, title, text, action = '', style = '') => `<div class="card empty big"${style ? ` style="${style}"` : ''}>
+  <span class="pic">${icon(pic)}</span><b>${title}</b><p>${text}</p>${action}</div>`;
 function renderVoiceCards() {
   const def = S.settings?.default_voice;
   const html = S.voices.length ? S.voices.map((v) => `
     <section class="card vcard${v.id === def ? ' default' : ''}" data-id="${esc(v.id)}">
-      <div class="top"><span class="name">${esc(v.name)}</span>${v.id === def ? '<span class="chip accent">Default</span>' : ''}${v.source === 'found' ? '<span class="chip">Found</span>' : ''}</div>
-      <div class="meta"><span>${esc(langName(v.language))}</span><span>${v.seconds} s clip</span>${v.denoised ? '<span>noise reduced</span>' : ''}<span>${fmtWhen(v.created)}</span></div>
+      <div class="top">${avatar(v.name)}<div class="who"><span class="name">${esc(v.name)}</span><span class="lang">${esc(langName(v.language))}</span></div>${v.id === def ? '<span class="chip accent">Default</span>' : ''}${v.source === 'found' ? '<span class="chip">Found</span>' : ''}</div>
+      <div class="meta"><span>${v.seconds} s clip</span>${v.denoised ? '<span>noise reduced</span>' : ''}<span>${fmtWhen(v.created)}</span></div>
       ${v.notes ? `<div class="notes">${esc(v.notes)}</div>` : ''}
-      <audio controls preload="metadata" src="/api/voices/${encodeURIComponent(v.id)}/clip?v=${encodeURIComponent(v.seconds + '-' + v.denoised)}"></audio>
+      ${player(`/api/voices/${encodeURIComponent(v.id)}/clip?v=${encodeURIComponent(v.seconds + '-' + v.denoised)}`)}
       ${v.advice?.length ? `<ul class="tips">${v.advice.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
       <div class="preview-slot"></div>
       <div class="acts">
         <button class="btn sm accent" data-v="preview">${icon('speaker')} Hear it speak</button>
         <button class="btn sm" data-v="edit">${icon('pencil')} Edit</button>
-        ${v.id === def ? '' : `<button class="btn sm" data-v="default">${icon('star')} Make default</button>`}
-        <button class="icon-btn" data-v="delete" aria-label="Delete voice">${icon('trash')}</button>
+        <span class="grow"></span>
+        ${v.id === def ? `<span class="icon-btn on" title="The default voice" aria-label="The default voice">${icon('star')}</span>` : `<button class="icon-btn" data-v="default" title="Make default" aria-label="Make default">${icon('star')}</button>`}
+        <button class="icon-btn" data-v="delete" title="Delete voice" aria-label="Delete voice">${icon('trash')}</button>
       </div>
-    </section>`).join('') : '<div class="card empty" style="grid-column:1/-1">No voices yet. Add a clip above, or find a new voice.</div>';
+    </section>`).join('') : emptyCard('users', 'No voices yet', 'Add a 6–15 second clip of a voice above, or find a brand-new voice that belongs to nobody.', '', 'grid-column:1/-1');
   setHtml($('voice-cards'), html);
 }
 
@@ -803,13 +991,20 @@ function setVoiceFile(f) {
   S.voiceFile = f;
   $('voice-drop-text').innerHTML = f ? `<b>${esc(f.name)}</b><br><small>${fmtSize(f.size)} · click to choose another</small>` : 'Drop an audio file here, or click to choose';
   const p = $('voice-file-preview');
-  if (f) { p.src = URL.createObjectURL(f); p.hidden = false; } else p.hidden = true;
+  if (f) { p.innerHTML = player(URL.createObjectURL(f)); p.hidden = false; } else { p.innerHTML = ''; p.hidden = true; }
   if (f && !$('voice-name').value) $('voice-name').value = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').slice(0, 60);
   checkVoiceForm();
 }
-function checkVoiceForm() { $('voice-add').disabled = !(S.voiceFile && $('voice-name').value.trim() && $('voice-consent').checked); }
+function checkVoiceForm() {
+  const missing = [!S.voiceFile && 'choose a clip', !$('voice-name').value.trim() && 'give it a name', !$('voice-consent').checked && 'tick the permission box'].filter(Boolean);
+  $('voice-add').disabled = missing.length > 0;
+  const hint = $('voice-add-hint');
+  hint.textContent = missing.length ? `To add it: ${missing.join(', ').replace(/, ([^,]*)$/, ' and $1')}.` : '';
+  hint.hidden = !missing.length;
+}
 $('voice-file').addEventListener('change', (e) => setVoiceFile(e.target.files[0] || null));
 ['voice-name', 'voice-consent'].forEach((id) => $(id).addEventListener('input', checkVoiceForm));
+checkVoiceForm();
 $('voice-consent').addEventListener('change', checkVoiceForm);
 const drop = $('voice-drop');
 ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
@@ -841,7 +1036,7 @@ $('voice-cards').addEventListener('click', run(async (e) => {
     try {
       const r = await api(`/api/voices/${encodeURIComponent(id)}/preview`, { method: 'POST', json: {}, raw: true });
       const url = URL.createObjectURL(await r.blob());
-      card.querySelector('.preview-slot').innerHTML = `<div class="micro">Sample · ${esc(langName(v.language))}</div><audio controls autoplay src="${url}"></audio>`;
+      card.querySelector('.preview-slot').innerHTML = `<div class="micro">Sample · ${esc(langName(v.language))}</div>${player(url, { autoplay: true })}`;
     } finally { b.disabled = false; b.innerHTML = `${icon('speaker')} Hear it speak`; }
   } else if (b.dataset.v === 'default') {
     S.settings = await api('/api/settings', { method: 'PUT', json: { default_voice: id } });
@@ -881,7 +1076,7 @@ $('find-go').addEventListener('click', run(async () => {
     $('found-list').innerHTML = found.map((f, i) => `
       <div class="found-item" data-token="${f.token}" data-lang="${f.language}">
         <div class="row between"><span class="micro">Voice ${i + 1} · ${esc(langName(f.language))}</span></div>
-        <audio controls src="/api/found/${f.token}"></audio>
+        ${player(`/api/found/${f.token}`)}
         <div class="row" style="gap:8px"><input class="input" placeholder="Name it to keep it" maxlength="60" style="height:34px"><button class="btn sm accent" data-keep>Keep</button></div>
       </div>`).join('');
   } finally { $('find-go').disabled = false; $('find-go').innerHTML = `${icon('sparkle')} Find voices`; }
@@ -1083,10 +1278,9 @@ document.addEventListener('click', run(async (e) => {
 
 // ---------- SETTINGS ----------
 async function loadSettings() {
-  S.settings = await api('/api/settings');
-  await loadVoicesList();
+  const [settings, , upd] = await Promise.all([api('/api/settings'), loadVoicesList(), api('/api/update').catch(() => null)]);
+  S.settings = settings;
   const s = S.settings, st = S.state;
-  const upd = await api('/api/update').catch(() => null);
   const pathRow = (key, label, help) => `<div class="field"><label class="label">${label}</label><div class="path-row"><input class="input" data-set="${key}" value="${esc(s[key])}" title="${esc(s[key])}"><button class="btn sm" data-browse="${key}">Browse</button><button class="btn sm" data-open-folder="${key.replace('_dir', '')}" title="Open in File Explorer" aria-label="Open in File Explorer">${icon('folder')}</button></div>${help ? `<p class="help">${help}</p>` : ''}</div>`;
   const html = `<div class="settings-cols">
     <div class="settings-stack">
@@ -1121,6 +1315,7 @@ async function loadSettings() {
     </div>
     <div class="settings-stack">
     <section class="card panel"><h2>App</h2>
+      <div class="field"><label class="label">Appearance</label><div class="seg" role="group" aria-label="Appearance">${[['', 'Same as Windows'], ['light', 'Light'], ['dark', 'Dark']].map(([k, label]) => `<button type="button" data-theme-pick="${k}" aria-pressed="${themePick() === k}">${label}</button>`).join('')}</div></div>
       <label class="switch"><input type="checkbox" data-set="start_with_windows" ${s.start_with_windows ? 'checked' : ''}> Start with Windows (in the tray)</label>
       <label class="switch"><input type="checkbox" data-set="notify" ${s.notify ? 'checked' : ''}> Windows notification when a batch finishes</label>
       <div class="pair"><div class="field"><label class="label">Port</label><input class="input mono" type="number" data-set="port" value="${s.port}"><p class="help">Applies after a restart.</p></div>
@@ -1184,6 +1379,8 @@ $('settings-body').addEventListener('change', run(async (e) => {
   toast(r.restart_needed ? 'Saved. Restart the app to use the new port.' : 'Saved.', true);
 }));
 $('settings-body').addEventListener('click', run(async (e) => {
+  const tp = e.target.closest('[data-theme-pick]');
+  if (tp) { setTheme(tp.dataset.themePick); document.querySelectorAll('[data-theme-pick]').forEach((b) => b.setAttribute('aria-pressed', b === tp)); return; }
   const br = e.target.closest('[data-browse]');
   if (br) {
     const key = br.dataset.browse;
@@ -1436,7 +1633,7 @@ async function renderTranscripts() {
       </div><div class="acts">
         ${t.status === 'done' ? `<button class="btn sm" data-tr="view">${icon('text')} Read</button>${Object.keys(t.files).filter((k) => k !== 'json').map((k) => `<a class="btn sm" href="/api/transcripts/${t.id}/${k}?download=1">${icon('download')} ${k.toUpperCase()}</a>`).join('')}` : ''}
         <button class="icon-btn" data-tr="delete" aria-label="Delete">${icon('trash')}</button></div></div>`;
-  }).join('') : '<div class="card empty">No transcripts yet.</div>';
+  }).join('') : emptyCard('text', 'No transcripts yet', 'Drop a video or audio file above to get its text and subtitles.');
   setHtml($('t-list'), html);
   if (list.some((t) => ['queued', 'converting', 'running'].includes(t.status)) && S.view === 'transcribe') setTimeout(renderTranscripts, 1000);
 }

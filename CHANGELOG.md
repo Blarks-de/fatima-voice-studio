@@ -3,6 +3,14 @@
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
 ## 0.2.4
+- Dark mode: pick Light, Dark or Same as Windows in Settings → App.
+- New audio players everywhere: a waveform you can click or drag to jump around, and only one plays at a time.
+- Tidier voice cards: initials badge, buttons on one line (Make default is now a star), and a note under Add voice saying what's still needed.
+- Parts show their state as a coloured strip (green done, amber to check, red failed), and the text lights up while a part plays.
+- Create: script boxes grow as you type, and the queue shows how much audio you made today, this week and in all.
+- Batch page: details as small labels, and the Whisper score in green, amber or red so scripts to check stand out.
+- The top bar shows a filling ring while speaking (hover the line under it for the full text).
+- Friendlier empty pages, grey placeholders while pages load, a quicker Settings page, and messages with an icon.
 - Help is now built in: step-by-step guides for every part of the app, with search and a Help link on every page. Works offline.
 - Works on a fresh Windows install: the app now brings the Microsoft Visual C++ Runtime the engines need, and says clearly when an engine can't start.
 - Tidier Settings page: the cards sit in three even columns, Output is split into Speech and Files, and each folder has an Open button.

@@ -9,7 +9,7 @@ Every change on the General page is saved as soon as you make it.
 
 | Setting | What it does | Default |
 |---|---|---|
-| **Voice** | The voice picked for you on the Create page. Same as *Make default* on a voice's card. | your first voice |
+| **Voice** | The voice picked for you on the Create page. Same as *Make default* (the star) on a voice's card. | your first voice |
 | **Language** | The language picked when the voice doesn't set one. | English |
 | **Voice model** | The model that speaks new scripts. | Qwen3-TTS 1.7B · Q8 |
 
@@ -49,6 +49,7 @@ See [Files and folders](files-and-folders.md).
 
 | Setting | What it does | Default |
 |---|---|---|
+| **Appearance** | Light or dark pages, or **Same as Windows** to follow your Windows colour setting. Kept in this browser only. | Same as Windows |
 | **Start with Windows (in the tray)** | Starts the app quietly when you sign in to Windows. Also in the tray menu. | off |
 | **Windows notification when a batch finishes** | A Windows notification when a batch is done. | on |
 | **Port** | The address the studio uses: `http://127.0.0.1:<port>/`. Change it only if another program uses 9830. Applies after a restart. | 9830 |
