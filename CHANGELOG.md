@@ -3,6 +3,7 @@
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
 ## 0.2.4
+- Works on a fresh Windows install: the app now brings the Microsoft Visual C++ Runtime the engines need, and says clearly when an engine can't start.
 - Tidier Settings page: the cards sit in three even columns, Output is split into Speech and Files, and each folder has an Open button.
 
 ## 0.2.3

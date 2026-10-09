@@ -11,7 +11,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from . import config, media, subtitles
+from . import config, media, runtime, subtitles
 from .trash import to_recycle_bin
 
 log = logging.getLogger("studio.transcribe")
@@ -114,6 +114,7 @@ class Transcripts:
                 "-f", str(wav), "-l", t["language"] or "auto", "-t", str(threads), "-ojf", "-of", str(stem), "-pp"]
         if t["translate"]:
             args.append("-tr")
+        runtime.prepare(exe.parent)
         self._proc = subprocess.Popen(args, cwd=exe.parent, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                       creationflags=media.NO_WINDOW)
         tail = []
@@ -126,7 +127,8 @@ class Transcripts:
         self._proc = None
         result_file = stem.with_suffix(".json")
         if code or not result_file.exists():
-            raise subtitles.WhisperError("Whisper failed: " + (tail[-1] if tail else f"code {code}"))
+            raise subtitles.WhisperError(runtime.load_problem(code)
+                                         or "Whisper failed: " + (tail[-1] if tail else f"code {code}"))
         result = json.loads(result_file.read_text(encoding="utf-8", errors="replace"))
         text = subtitles.transcript(result)
         heard = subtitles.whisper_words(result)

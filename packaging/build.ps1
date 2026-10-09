@@ -93,6 +93,30 @@ $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
     "$Root\packaging\launcher\Launcher.cs" "$Build\Version.cs"
 if ($LASTEXITCODE -ne 0) { throw "launcher build failed" }
 
+# 5b. Microsoft Visual C++ runtime for the engines (llama.cpp and whisper.cpp need it; a fresh Windows doesn't have
+#     it). Taken from Visual Studio's redistributable folder (GitHub's build machines), else from this PC's own
+#     redistributable install; each file must carry Microsoft's signature. studio/runtime.py uses them app-locally.
+$crt = @("msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "msvcp140_atomic_wait.dll", "msvcp140_codecvt_ids.dll",
+         "vcruntime140.dll", "vcruntime140_1.dll", "concrt140.dll", "vcomp140.dll")
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$vs = if (Test-Path $vswhere) { & $vswhere -latest -products * -property installationPath } else { $null }
+$redist = if ($vs) { Get-ChildItem "$vs\VC\Redist\MSVC\*\x64" -Directory -ErrorAction SilentlyContinue |
+                     Where-Object { $_.Parent.Name -match '^\d+\.\d+' } |
+                     Sort-Object { [version]$_.Parent.Name } -Descending | Select-Object -First 1 } else { $null }
+New-Item -ItemType Directory -Force "$Stage\runtime" | Out-Null
+foreach ($dll in $crt) {
+    $src = if ($redist) { Get-ChildItem $redist.FullName -Recurse -Filter $dll | Select-Object -First 1 } else { $null }
+    if (-not $src) { $src = Get-Item "$env:SystemRoot\System32\$dll" -ErrorAction SilentlyContinue }
+    if (-not $src) { throw "Visual C++ runtime file $dll not found (install Visual Studio Build Tools or VC_redist)" }
+    $sig = Get-AuthenticodeSignature $src.FullName
+    if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch "O=Microsoft Corporation") {
+        throw "$dll isn't signed by Microsoft ($($sig.Status))"
+    }
+    Copy-Item $src.FullName "$Stage\runtime\$dll"
+}
+Write-Host ("Visual C++ runtime {0} from {1}" -f (Get-Item "$Stage\runtime\msvcp140.dll").VersionInfo.FileVersion,
+            $(if ($redist) { $redist.FullName } else { "System32" }))
+
 # 6. Smoke test: the bundled Python imports the whole app, and the launcher starts it.
 & "$Stage\python\python.exe" -c "import studio.app, studio.tray, studio.mcp_server, numpy, soundfile, lameenc, num2words, sherpa_onnx, win32api; print('imports ok')"
 if ($LASTEXITCODE -ne 0) { throw "the bundled runtime can't import the app" }

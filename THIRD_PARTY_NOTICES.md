@@ -28,6 +28,7 @@ the following third-party software and models, each under its own licence.
 | sse-starlette | BSD-3-Clause | https://github.com/sysid/sse-starlette |
 | jsonschema, jsonschema-specifications, referencing, rpds-py | MIT | https://github.com/python-jsonschema |
 | cryptography | Apache-2.0 or BSD-3-Clause | https://github.com/pyca/cryptography |
+| Microsoft Visual C++ runtime (msvcp140, vcruntime140, vcomp140 and related DLLs, in `runtime/`) | Microsoft Visual C++ redistributable terms | https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files |
 | cffi | MIT | https://github.com/python-cffi/cffi |
 | pycparser | BSD-3-Clause | https://github.com/eliben/pycparser |
 | OpenTelemetry API | Apache-2.0 | https://github.com/open-telemetry/opentelemetry-python |

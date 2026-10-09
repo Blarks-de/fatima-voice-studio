@@ -54,6 +54,8 @@ def main() -> None:
         handlers.append(logging.StreamHandler())
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s", handlers=handlers)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    from . import runtime
+    runtime.quiet_loader_errors()  # a missing DLL gets the app's own message, not a Windows pop-up per engine run
 
     server = uvicorn.Server(uvicorn.Config(create_app(cfg), host=cfg["host"], port=cfg["port"],
                                            log_level="warning", log_config=None))

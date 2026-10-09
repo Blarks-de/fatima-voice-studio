@@ -14,7 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import config, text as textmod
+from . import config, runtime, text as textmod
 
 log = logging.getLogger("studio.engine")
 
@@ -108,6 +108,7 @@ class Engine:
             args += ["--tts-speaker-file", str(voice)]
         out.parent.mkdir(parents=True, exist_ok=True)
         out.unlink(missing_ok=True)
+        runtime.prepare(exe.parent)
         self.state, self.frames, self.frames_expected, self.started = "busy", 0, int(expected), time.monotonic()
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         tail: list[str] = []
@@ -124,6 +125,9 @@ class Engine:
                 self.proc.kill()
                 raise EngineError("The engine took too long on this segment and was stopped.")
             pump.join(timeout=5)
+            if code != 0 and not self._cancel:
+                with open(self.log_path, "a", encoding="utf-8") as logf:
+                    logf.write(f"engine exited with code {code} (0x{code & 0xFFFFFFFF:08X})\n")
         finally:
             self.proc = None
             prompt.unlink(missing_ok=True)
@@ -152,6 +156,8 @@ class Engine:
 
 
 def _friendly(detail: str, code: int) -> str:
+    if problem := runtime.load_problem(code):
+        return problem
     d = detail.lower()
     if "out of memory" in d or "failed to allocate" in d or "cudamalloc" in d:
         return "The graphics card ran out of memory. Close other apps using the GPU, or use the smaller Q4 model."

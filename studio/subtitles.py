@@ -15,7 +15,7 @@ import unicodedata
 import uuid
 from pathlib import Path
 
-from . import config, text as textmod
+from . import config, runtime, text as textmod
 
 log = logging.getLogger("studio.subtitles")
 
@@ -55,6 +55,7 @@ def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = 
         seconds = sf.info(str(wav)).duration
     except Exception:
         seconds = 600
+    runtime.prepare(exe.parent)
     try:
         p = subprocess.run(args, cwd=exe.parent, capture_output=True, timeout=120 + seconds * 2,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -64,7 +65,8 @@ def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = 
     out = stem.with_suffix(".json")
     if p.returncode or not out.exists():
         err = (p.stderr or p.stdout or b"").decode("utf-8", "replace").strip().splitlines()
-        raise WhisperError("Whisper failed: " + (err[-1] if err else f"code {p.returncode}"))
+        raise WhisperError(runtime.load_problem(p.returncode)
+                           or "Whisper failed: " + (err[-1] if err else f"code {p.returncode}"))
     try:
         return json.loads(out.read_text(encoding="utf-8", errors="replace"))
     finally:
