@@ -155,6 +155,29 @@ class RuntimeChecks(unittest.TestCase):
         self.assertEqual(c.DATA, home / "data")
         self.assertIsInstance(c.installed_engines({"engine": "system"}), list)
 
+    def test_llama_build_is_read_from_every_known_version_format(self):
+        script = Path(self.tmp.name) / "fake-llama-tts"
+        old = os.environ.get("FVS_LLAMA_TTS")
+        try:
+            os.environ["FVS_LLAMA_TTS"] = str(script)
+            for line, want in [("version: 0.3.0-dev (build 10689, commit c13e6fe)", "b10689"),
+                               ("version: 10689 (c13e6fe)", "b10689"), ("version: b9000 (abc)", "b9000"),
+                               ("no version here", None)]:
+                script.write_text(f"#!/bin/sh\necho '{line}' >&2\n")
+                script.chmod(0o755)
+                self.assertEqual(self.compat.llama_build(), want, line)
+            os.environ["FVS_LLAMA_TTS"] = str(script) + "-missing"
+            self.assertIsNone(self.compat.llama_build())
+        finally:
+            if old is None:
+                os.environ.pop("FVS_LLAMA_TTS", None)
+            else:
+                os.environ["FVS_LLAMA_TTS"] = old
+
+    def test_about_page_does_not_show_the_windows_engine_pin(self):
+        # studio/ pins the release of the Windows engine downloads; on Linux the installed build is shown instead
+        self.assertEqual(self.config.ENGINE_RELEASE, self.compat.llama_build() or "not found")
+
     def test_patched_names_are_the_ones_in_use(self):
         for mod in (self.store, self.voices, self.transcribe):
             self.assertIs(mod.to_recycle_bin, self.compat._to_trash, f"{mod.__name__} still has the Windows trash")

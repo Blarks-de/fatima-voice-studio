@@ -18,6 +18,7 @@ What it does:
   * misc       os.startfile -> xdg-open, clipboard -> wl-copy / xclip / xsel
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -56,6 +57,21 @@ def _run(args: list[str], timeout: float = 10) -> str:
         return ""
 
 
+def llama_build() -> str | None:
+    """The build of the installed llama-tts as "b10689", or None. `--version` prints "version: 0.3.0-dev (build 10689,
+    commit ...)" (newer builds) or "version: 10689 (commit)" (older ones), on stderr or stdout."""
+    tool = find_tool("FVS_LLAMA_TTS", "llama-tts")
+    if not tool:
+        return None
+    try:
+        r = subprocess.run([tool, "--version"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"^version: .*\(build (\d+)", r.stdout + r.stderr, re.M) \
+        or re.search(r"^version: b?(\d+) \(", r.stdout + r.stderr, re.M)
+    return f"b{m.group(1)}" if m else None
+
+
 # ---- paths and the "system" engine ---------------------------------------------------------------------------
 
 def _patch_config() -> None:
@@ -75,6 +91,9 @@ def _patch_config() -> None:
     d["engine"] = SYSTEM_ENGINE
     d["check_updates"] = False
 
+    # studio/ pins the release of the Windows engine downloads here and shows it on the About page; that is not what
+    # runs on Linux. Show the installed llama-tts build instead (the download URLs were built at import time).
+    config.ENGINE_RELEASE = llama_build() or "not found"
     config.ENGINE_EXE = "llama-tts"
     config.WHISPER_EXE = "whisper-cli"
     config.ENGINES.clear()
@@ -445,6 +464,8 @@ TEXTS = [
 # Edits to the page's script where a text is not enough: no Download button for things that can't be downloaded.
 # The old strings must match studio/web/app.js exactly; test_smoke.py fails when upstream changes them.
 JS_PATCHES = [
+    # the About page (it is meant for problem reports) starts the line with "Windows" and a Linux kernel version
+    ("['Windows', a.windows],", "['System', a.windows.replace(/^Windows /, 'Linux ')],"),
     ("else acts = `<button class=\"btn sm accent\" data-t=\"download\"",
      "else if (t.system_only) acts = `<span class=\"chip warn\">Not found on this PC</span>`;\n  "
      "else acts = `<button class=\"btn sm accent\" data-t=\"download\""),
