@@ -27,8 +27,9 @@ Honest overview of what has and hasn't been verified. "Re-run pending" means it 
 | Voice-clip upload with the voice separator (`separate=1`, `uvr-vocals` model) from an MP4; the new voice then spoke a sentence | **Tested** (2026-10-09, CachyOS, about 6 s for a 9 s clip; separation quality not judged by ear) |
 | Voice-clip upload with the plain noise-removal switch (`denoise=1`) | Not tested |
 | German audio through Whisper `small` (inside the batch above) | **Tested** |
-| Model download through the app (Whisper `medium` 540 MB and `large-v3` 1.1 GB, started via the API) | **Tested** (both finished and were used). Q8 and `small` were already on disk; `turbo` not tried |
+| Model download through the app (Whisper `medium` 540 MB, `large-v3` 1.1 GB and `large-v3-turbo` 570 MB, started via the API) | **Tested** (all finished and were used). Q8 and `small` were already on disk |
 | Whisper `large-v3` (q5_0): the 3-script batch (WAV + MP3 + SRT, match 0.96 / 1.0 / 1.0) and transcription of WAV, M4A, MP4 and a WAV with added noise | **Tested** on CachyOS (Arch), 2026-10-09. Whisper runs on the CPU: about 1.7x the audio length for `large` (20 s for 11 s), 4 s for `small`. The noise was mild, so it did not show a difference between `small` and `large` |
+| Whisper `large-v3-turbo` (q5_0): the same 3-script batch (match 0.96 / 1.0 / 1.0) and transcription of WAV, M4A, MP4 and the noisy WAV | **Tested** on CachyOS (Arch), 2026-10-09. About 1.2x the audio length on the CPU (14 s for 11 s), between `small` and `large`; same text as `large` on these clips |
 
 ## Quick start
 
