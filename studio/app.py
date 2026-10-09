@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import mimetypes
 import os
 import random
 import shutil
@@ -33,6 +34,9 @@ from .worker import Worker
 
 log = logging.getLogger("studio")
 WEB = Path(__file__).parent / "web"
+HELP = Path(__file__).parent / "help"  # the guides: Markdown, shown on the Help page and readable on GitHub
+mimetypes.add_type("image/webp", ".webp")  # the guides' screenshots; older Windows registries don't know it
+mimetypes.add_type("text/markdown; charset=utf-8", ".md")
 EXPORTS = config.DATA / "exports"
 FOUND = config.DATA / "found"        # "Find a voice" samples waiting to be kept
 PREVIEWS = config.DATA / "previews"  # voice preview samples
@@ -111,7 +115,7 @@ def create_app(cfg: dict) -> FastAPI:
                 and request.headers.get("x-studio") != "1"):
             return JSONResponse({"detail": "Missing X-Studio header"}, status_code=403)
         response = await call_next(request)
-        if request.url.path == "/" or request.url.path.endswith((".html", ".js", ".css")):
+        if request.url.path == "/" or request.url.path.endswith((".html", ".js", ".css", ".md")):
             response.headers["Cache-Control"] = "no-cache"  # revalidate, so an updated app never runs stale scripts
         return response
 
@@ -1321,5 +1325,6 @@ def create_app(cfg: dict) -> FastAPI:
 
     if mcp:
         app.router.routes.extend(mcp.streamable_http_app().routes)  # POST/GET /mcp, exact path (no redirect)
+    app.mount("/help-files", StaticFiles(directory=HELP), name="help")
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")
     return app

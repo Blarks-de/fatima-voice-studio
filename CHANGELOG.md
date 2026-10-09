@@ -3,8 +3,10 @@
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
 ## 0.2.4
+- Help is now built in: step-by-step guides for every part of the app, with search and a Help link on every page. Works offline.
 - Works on a fresh Windows install: the app now brings the Microsoft Visual C++ Runtime the engines need, and says clearly when an engine can't start.
 - Tidier Settings page: the cards sit in three even columns, Output is split into Speech and Files, and each folder has an Open button.
+- Settings now shows the real MP3 quality (192 kbps by default), and offers 192 and 256.
 
 ## 0.2.3
 - Clearer Updates panel in Settings: what's new, the download size, and what each button does.

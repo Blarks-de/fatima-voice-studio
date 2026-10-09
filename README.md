@@ -16,17 +16,17 @@ On a laptop RTX 5060 (8 GB) it speaks about **2.2× faster than real time**: a 1
 
 The sibling of [Fatima Image Studio](https://github.com/hassanxs/Fatima-Image-Studio).
 
-![Fatima Voice Studio: a batch of three scripts on the Create page, with another batch speaking in the queue](docs/screenshots/create.webp)
+![Fatima Voice Studio: a batch of three scripts on the Create page, with another batch speaking in the queue](studio/help/images/create.webp)
 
 ## Screenshots
 
 | Batches | One batch |
 |---|---|
-| ![Batches page: every batch is a folder on disk](docs/screenshots/batches.webp) | ![A batch: each script with its WAV, MP3 and SRT, and every part with New take and Edit](docs/screenshots/batch.webp) |
+| ![Batches page: every batch is a folder on disk](studio/help/images/batches.webp) | ![A batch: each script with its WAV, MP3 and SRT, and every part with New take and Edit](studio/help/images/batch.webp) |
 | **Voices** | **Setup** |
-| ![Voices page: add a clip, or find a brand-new voice](docs/screenshots/voices.webp) | ![Setup page: hardware check, recommended engine and model, speed test](docs/screenshots/setup.webp) |
+| ![Voices page: add a clip, or find a brand-new voice](studio/help/images/voices.webp) | ![Setup page: hardware check, recommended engine and model, speed test](studio/help/images/setup.webp) |
 | **Models** | **Hear it** |
-| ![Models page: every model with its licence](docs/screenshots/models.webp) | [English sample](docs/samples/english-nova.mp3) (18 s) · [Spanish sample](docs/samples/spanish-lucia.mp3) (17 s)<br><br>Both made in the app on a laptop RTX 5060, with *found* voices (voices the model invented, nobody's real voice), levelled to −16 LUFS. |
+| ![Models page: every model with its licence](studio/help/images/models.webp) | [English sample](docs/samples/english-nova.mp3) (18 s) · [Spanish sample](docs/samples/spanish-lucia.mp3) (17 s)<br><br>Both made in the app on a laptop RTX 5060, with *found* voices (voices the model invented, nobody's real voice), levelled to −16 LUFS. |
 
 ## Download and install
 
@@ -54,7 +54,8 @@ disk.
 ## Start
 
 Start **Fatima Voice Studio** from the Start menu. It runs in the background with a tray icon and opens
-http://127.0.0.1:9830/ in your browser. Starting it again while it runs just opens the page.
+http://127.0.0.1:9830/ in your browser. Starting it again while it runs just opens the page. New to it? Follow
+[Getting started](studio/help/getting-started.md).
 
 Tray menu: open, copy API URL / key, open batches folder, *Start with Windows*, quit. The dot on the tray icon
 shows what it's doing: none = ready, amber = speaking or writing files, red = engine problem. A Windows
@@ -73,81 +74,56 @@ python -m studio
 tray app, and `python -m studio --install` adds a Start menu entry and a launcher in the folder. Run from source,
 everything (settings, models, engine, voices, batches) stays inside the project folder.
 
-## Using it
+## Help and guides
 
-- **Voices** — add a 6–15 second clip of one person speaking (WAV, MP3, FLAC, OGG, or a video). The clip is
-  trimmed, levelled and checked (length, background noise, distortion), with *Reduce background noise* if it needs
-  it; the original is kept, so you can prepare it again from a different part. A longer recording (an interview, a
-  video) uses its best 12 seconds of speech. *Hear it speak* reads a sample sentence. Only add voices that are
-  yours or that you have the right to use.
-- **Voice from music or video** — tick *Take the voice out of music or background sound* and the voice separator
-  (UVR MDX-Net, on the CPU, about 4× real time) keeps only the voice; a long file is cut to its best minute first.
-- **Find a new voice** — the model invents a different voice each time; keep the ones you like under a name.
-  Nobody's real voice, so no permission is needed, and a kept voice stays the same from then on.
-- **Quick** (Create → Quick) — type or paste text, Ctrl+Enter. Quick takes are made right away, ahead of any
-  running batch, and saved in one `YYYY-MM-DD_Singles` folder per day.
-- **Batch** (Create → Batch) — one or many scripts: type them, *Paste and split* (start each script with a
-  `### Title` line, or separate them with `---`), or *Import files* (each .txt/.md file is a script; a .csv has
-  columns `text,title,voice,language`). Each script can have its own voice and language.
-- **Channel presets** — save the voice, language, speed, loudness, pauses and files under your channel's name and
-  pick them in one click (agents can use a preset by name too).
-- **Pauses** — blank lines start a new paragraph (0.7 s pause by default); add `[pause]` (1 s) or
-  `[pause 2.5s]` anywhere.
-- **Speed** — 0.85× to 1.2× without changing the voice's pitch. Change it later on a finished batch (*Output*):
-  the files are rebuilt in seconds, nothing is spoken again.
-- **Pronunciation** (Settings → Pronunciation) — teach the voice names and abbreviations (`CJNG` → *ce jota ene ge*,
-  `EE.UU.` → *Estados Unidos*), per language, with *Hear it* to check. **Numbers as words**: years, money
-  (`$5 millones` → *cinco millones de dólares*), percentages, times and ordinals are read correctly in English,
-  Spanish, French, German, Italian and Portuguese. *See what the voice will read* shows the result before
-  speaking; your script and subtitles keep the original spelling. *Import* / *Export* the list as CSV (Excel,
-  Google Sheets; English or Spanish column names, comma or semicolon), JSON, or TXT lines `written = said as`.
-- **Output** — every finished script becomes `01_title.wav`, `01_title.mp3` and `01_title.srt` in the batch
-  folder: joined, levelled to −16 LUFS (YouTube voiceover level; −14, −19, −23 also offered) with peaks under −1 dB.
-  Subtitles use your script's exact words; Whisper only times them.
-- **Parts** — long scripts are spoken in parts of up to about 40 seconds, with the same voice and seed, and joined
-  with exact pauses. Each part can be played on its own, given a *New take* (new seed), or edited (fix a word,
-  spell a name the way it sounds). The script's files are rebuilt by themselves.
-- **Checks** — a part that came out far too long or short for its text is re-made once automatically; a part
-  where Whisper recognised under 70% of the words is marked *worth a listen*.
-- **Edit script** — change the text, title, voice or language of a finished script: only the parts whose text
-  changed are spoken again.
-- **Queue** — batches run one part at a time, in order; reorder, pause, resume, stop, retry. If the app or PC
-  stops mid-batch, it carries on where it left off when it starts again.
-- **Batches** — every past batch with View, Folder, ZIP (finished files, or with every part), Re-run (same seed,
-  same takes) and Delete; *Select* deletes several at once. Deletes go to the Windows Recycle Bin.
-- **Transcribe** — drop in a video or audio file and get its text plus SRT and VTT subtitles, with any Whisper
-  model, optionally translated to English. A 2-minute video takes about 15 seconds with Whisper small. Video files
-  need ffmpeg: the app uses the one on your PC, or downloads it on the Models page (Tools).
+Step-by-step guides for every part of the app are in [`studio/help`](studio/help/README.md), and the same pages are
+inside the app under **Help** (with a *Help* link on every page, and search).
 
-## Where things are
+- [Getting started](studio/help/getting-started.md): install, Setup, your first voice and voiceover
+- [Voices](studio/help/voices.md) · [Making voiceovers](studio/help/making-voiceovers.md) ·
+  [Writing scripts for the voice](studio/help/writing-scripts.md) · [Batches and fixing parts](studio/help/batches.md)
+- [Pronunciation](studio/help/pronunciation.md) · [Transcribe](studio/help/transcribe.md) ·
+  [Setup and models](studio/help/setup-and-models.md) · [Settings](studio/help/settings.md)
+- [Files and folders](studio/help/files-and-folders.md) · [Updates and uninstalling](studio/help/updates.md) ·
+  [Connect: API and AI agents](studio/help/connect.md)
+- [Troubleshooting](studio/help/troubleshooting.md) · [Questions and answers](studio/help/faq.md)
 
-| Installed | From source | What |
-|---|---|---|
-| `Music\Fatima Voice Studio\Batches\<batch name>\` | `batches\` | `01_title.wav/.mp3/.srt`, `segments\` (every part), `batch.json` (scripts, seeds, settings) |
-| `Music\Fatima Voice Studio\Exports\` | `exports\` | Where agents (MCP) save exports |
-| `%LOCALAPPDATA%\Fatima Voice Studio\voices\` | `voices\` | One folder per voice: `original.*`, the prepared `clip.wav`, `voice.json` |
-| `%LOCALAPPDATA%\Fatima Voice Studio\data\` | `data\` | `config.json` (settings and the API key), logs |
-| `%LOCALAPPDATA%\Fatima Voice Studio\models\` | `models\` | Voice and Whisper models |
-| `%LOCALAPPDATA%\Fatima Voice Studio\engine\` | `engine\` | llama.cpp `b11476` builds (`cuda`, `cuda12`, `vulkan`, `cpu`) and whisper.cpp |
+## What it does
+
+- **Voices** — add a 6–15 second clip of a voice (or a longer recording, a video, even a song: the voice is taken
+  out of the music), or *find* a brand-new voice that belongs to nobody. [More](studio/help/voices.md)
+- **Quick takes and batches** — one line right now, or many scripts at once: typed, pasted and split on
+  `### Title` lines, or imported from .txt, .md and .csv files, each with its own voice and language if you like.
+  [More](studio/help/making-voiceovers.md)
+- **Finished files** — every script becomes `01_title.wav`, `.mp3` and `.srt`, levelled to −16 LUFS (YouTube
+  voiceover level) with peaks under −1 dB. Subtitles use your script's exact words; Whisper only times them.
+- **Natural reading** — paragraphs and `[pause 2s]` tags for pauses, speed from 0.85× to 1.2× without changing the
+  pitch, numbers and money read as words in six languages, and a
+  [pronunciation list](studio/help/pronunciation.md) for names and abbreviations.
+- **Fix without starting over** — long scripts are spoken in parts of about 40 seconds; redo one part with a new
+  take, edit its text, or edit the script: only what changed is spoken again. Parts that may have gone wrong are
+  found and marked for you. [More](studio/help/batches.md)
+- **A queue that keeps going** — reorder, pause, resume; if the PC stops, the batch carries on where it left off.
+- **Channel presets**, **Transcribe** (video or audio to TXT, SRT and VTT), an **OpenAI-compatible API** and an
+  **MCP server** for AI agents.
 
 ## Models and licences
 
 | Model | Licence | Notes |
 |---|---|---|
-| Qwen3-TTS 1.7B · Q8 (default) | Apache 2.0 — commercial use OK | 10 languages: English, Spanish, French, German, Italian, Portuguese, Russian, Japanese, Korean, Chinese |
-| Qwen3-TTS 1.7B · Q4 | Apache 2.0 — commercial use OK | For 4 GB GPUs and CPU-only PCs |
-| Whisper base, small, medium, large-v3 turbo, large-v3 | MIT — commercial use OK | Subtitle timing and transcription, on the CPU. Small is recommended; pick the one in use on the Setup page or in Settings |
+| Qwen3-TTS 1.7B · Q8 (default) / Q4 | Apache 2.0 — commercial use OK | 10 languages: English, Spanish, French, German, Italian, Portuguese, Russian, Japanese, Korean, Chinese |
+| Whisper base, small, medium, large-v3 turbo, large-v3 | MIT — commercial use OK | Subtitle timing and transcription, on the CPU |
+| UVR MDX-Net Voc_FT (voice separator) | MIT — commercial use OK | Takes a voice out of music |
 
 Every model shows its licence in the app. Non-commercial models would carry a red label and are refused to AI
-agents unless allowed on the Connect page.
+agents unless allowed on the Connect page. See [Setup and models](studio/help/setup-and-models.md) and
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-## API
+## API and AI agents
 
-Base URL `http://127.0.0.1:9830/v1`, header `Authorization: Bearer <api key from Settings>`.
-
-- `POST /v1/audio/speech` — `{"input", "voice": "<name from your library>", "response_format": "mp3" | "wav" | "flac" | "pcm", "model": "qwen3-tts", "language": "es", "seed": 42}`. Any length: long text is split and joined.
-- `POST /v1/audio/transcriptions` — multipart `file`, optional `language`, `response_format` `json` | `text` | `srt` | `vtt` | `verbose_json`
-- `GET /v1/audio/voices`, `GET /v1/models`, `GET /v1/health`
+OpenAI-compatible API at `http://127.0.0.1:9830/v1` with `Authorization: Bearer <api key from Settings>`:
+`POST /v1/audio/speech`, `POST /v1/audio/transcriptions`, `GET /v1/audio/voices`, `GET /v1/models`, `GET /v1/health`.
+Interactive docs at http://127.0.0.1:9830/docs.
 
 ```python
 from openai import OpenAI
@@ -155,40 +131,15 @@ client = OpenAI(base_url="http://127.0.0.1:9830/v1", api_key="<api key>")
 client.audio.speech.create(model="qwen3-tts", voice="Narrator", input="Hello!").write_to_file("hello.mp3")
 ```
 
-API requests are served ahead of batches. The port can be changed in Settings (applies after a restart).
-Interactive docs: http://127.0.0.1:9830/docs
-
-## AI agents (MCP)
-
-Fatima Voice Studio is also an [MCP](https://modelcontextprotocol.io) server. Ready-to-copy setup for each agent
-is on the **Connect** page.
-
-| | Address | Use for |
-|---|---|---|
-| HTTP (built in) | `http://127.0.0.1:9830/mcp` + header `Authorization: Bearer <api key>` | Claude Code, Codex, Antigravity, Hermes |
-| stdio | command `<install folder>\python\python.exe` (or `python` from source), args `["<install folder>\studio_mcp.py"]` | agents that only start local commands |
+MCP server for AI agents at `http://127.0.0.1:9830/mcp` (same key), or over stdio with `studio_mcp.py`; ready-to-copy
+setup for Claude Code, Codex, Antigravity and Hermes is on the **Connect** page:
 
 ```bash
 claude mcp add --scope user --transport http fatima-voice-studio http://127.0.0.1:9830/mcp --header "Authorization: Bearer <api key>"
 ```
 
-| Tool | What it does |
-|---|---|
-| `list_voices`, `list_models`, `get_settings` | What's available, folders, defaults, languages |
-| `speak` | One piece of text now, ahead of batches; returns the WAV/MP3/SRT paths |
-| `create_batch` | Scripts as texts or `.txt` files, each with its own voice/language if wanted; loudness, formats, subtitles |
-| `list_batches`, `get_batch`, `wait_for_batch` | Status, file paths, parts worth a listen |
-| `regenerate_part`, `edit_part`, `edit_script`, `retry_failed` | Fix-ups |
-| `control_batch`, `rename_batch`, `move_in_queue` | Pause / resume / cancel, rename (folder too), queue order |
-| `export_batch` | Folder or ZIP into the Exports folder |
-| `add_voice`, `transcribe` | A voice from an allowed clip (needs `speaker_permission=true`); a transcript (TXT/SRT/VTT) of an audio or video file |
-| `list_presets` | Channel presets; `speak` and `create_batch` take `preset=` and `speed=` |
-| `list_pronunciations`, `add_pronunciation`, `preview_reading` | The pronunciation dictionary, and what the voice will actually read |
-
-**Guard rails:** agents can't download models or delete anything; non-commercial models are refused unless
-allowed on the Connect page; files are only read from the folders allowed there (Music, Downloads, Desktop and
-Documents by default; Batches and Exports always) and only written to the Exports folder. Calls without the API
-key are rejected.
+Agents can't download models or delete anything, only write to the Exports folder, and only read from the folders
+allowed on the Connect page. The full tool list and guard rails: [Connect](studio/help/connect.md).
 
 ## Building the installer
 

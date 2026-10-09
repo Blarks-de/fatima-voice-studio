@@ -21,6 +21,7 @@
     <a href="#setup" data-view="setup"><span data-icon="cpu"></span>Setup</a>
     <a href="#connect" data-view="connect"><span data-icon="plug"></span>Connect</a>
     <a href="#settings" data-view="settings"><span data-icon="sliders"></span>Settings<span class="nav-caret" aria-hidden="true">▾</span></a>
+    <a href="#help" data-view="help"><span data-icon="question"></span>Help</a>
   </nav>
   <div class="nav-menu" id="settings-menu" role="menu" aria-label="Settings sections" hidden>
     <a href="#settings" role="menuitem">General<span>Defaults, output, folders, updates</span></a>
@@ -373,6 +374,21 @@
     </div>
   </div>
   <div id="settings-body"></div>
+</main>
+
+<!-- ============ HELP ============ -->
+<main class="page" id="view-help" hidden>
+  <div class="page-head">
+    <div>
+      <div class="title-row"><h1>Help</h1><span class="kicker">GUIDES</span></div>
+      <p class="lede">How to use every part of the studio, step by step. The same guides are on GitHub.</p>
+    </div>
+    <div class="search"><span data-icon="search"></span><input class="input" id="help-search" placeholder="Search the guides" autocomplete="off" aria-label="Search the guides"></div>
+  </div>
+  <div class="help-layout">
+    <nav class="help-toc" id="help-toc" aria-label="Guides"></nav>
+    <article class="card doc" id="help-doc"></article>
+  </div>
 </main>
 
 <footer class="appfoot"><span id="foot-left">Fatima Voice Studio</span><span id="foot-right"></span></footer>

@@ -38,6 +38,7 @@ const ICONS = {
   speaker: '<path d="M11 5 6 9H3v6h3l5 4V5ZM16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/>',
   text: '<path d="M4 6h16M4 11h16M4 16h10"/>',
   gauge: '<path d="M12 14l4-4M4 18a9 9 0 1 1 16 0"/>',
+  question: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>',
 };
 const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 function paintIcons(root = document) { root.querySelectorAll('[data-icon]').forEach((el) => { el.outerHTML = icon(el.dataset.icon); }); }
@@ -156,11 +157,11 @@ function languageOptions(selected) {
 }
 
 // ---------- routing ----------
-const VIEWS = ['create', 'batches', 'batch', 'voices', 'models', 'setup', 'connect', 'settings', 'words', 'transcribe'];
+const VIEWS = ['create', 'batches', 'batch', 'voices', 'models', 'setup', 'connect', 'settings', 'words', 'transcribe', 'help'];
 function route() {
   const [view, arg] = (location.hash.slice(1) || 'create').split('/');
   let v = VIEWS.includes(view) ? view : 'create';
-  if (document.body.classList.contains('locked') && v !== 'setup') { v = 'setup'; history.replaceState(null, '', '#setup'); }
+  if (document.body.classList.contains('locked') && !['setup', 'help'].includes(v)) { v = 'setup'; history.replaceState(null, '', '#setup'); }
   S.view = v; S.arg = arg ? decodeURIComponent(arg) : null;
   VIEWS.forEach((x) => { $(`view-${x}`).hidden = x !== v; });
   document.querySelectorAll('.nav a').forEach((a) => {
@@ -170,7 +171,7 @@ function route() {
   });
   $('settings-menu').hidden = true;
   ({ create: showCreate, batches: loadBatches, batch: loadDetail, voices: loadVoices, models: loadModels, setup: loadSetup,
-     connect: loadConnect, settings: loadSettings, words: loadWords, transcribe: loadTranscribe })[v]?.();
+     connect: loadConnect, settings: loadSettings, words: loadWords, transcribe: loadTranscribe, help: loadHelp })[v]?.();
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', route);
@@ -201,7 +202,7 @@ async function pollState() {
   const st = S.state;
   const wasLocked = document.body.classList.contains('locked');
   document.body.classList.toggle('locked', !st.setup_ready);
-  if (!st.setup_ready && S.view !== 'setup') location.hash = '#setup';
+  if (!st.setup_ready && !['setup', 'help'].includes(S.view)) location.hash = '#setup';
   if (wasLocked && st.setup_ready) route();
   const eng = st.engine;
   let text, sub = '', dot = '';
@@ -1110,7 +1111,7 @@ async function loadSettings() {
         <label><input type="checkbox" data-set="subtitles" ${s.subtitles ? 'checked' : ''}> Subtitles (SRT)</label></div></div>
       <div class="field"><label class="label">Whisper model (subtitles and transcripts)</label><div class="select-wrap"><select class="select" data-set="subtitles_model"><option value=""${s.subtitles_model ? '' : ' selected'}>Best one downloaded</option>${st.models.filter((m) => m.kind === 'subtitles').map((m) => `<option value="${m.key}"${m.key === s.subtitles_model ? ' selected' : ''}${m.installed ? '' : ' disabled'}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('')}</select>${icon('chevron')}</div></div>
       <div class="pair"><div class="field"><label class="label">Loudness (LUFS)</label><input class="input mono" type="number" step="0.5" min="-30" max="-9" data-set="loudness" value="${s.loudness}"><p class="help">−16 suits voiceovers; YouTube plays at about −14.</p></div>
-        <div class="field"><label class="label">MP3 quality (kbps)</label><div class="select-wrap"><select class="select" data-set="mp3_bitrate">${[96, 128, 160].map((k) => `<option${k === s.mp3_bitrate ? ' selected' : ''}>${k}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
+        <div class="field"><label class="label">MP3 quality (kbps)</label><div class="select-wrap"><select class="select" data-set="mp3_bitrate">${[96, 128, 160, 192, 256].map((k) => `<option${k === s.mp3_bitrate ? ' selected' : ''}>${k}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
     </section>
     <section class="card panel"><h2>Folders</h2>
       ${pathRow('batches_dir', 'Batches', 'Every batch is a folder in here.')}
@@ -1468,6 +1469,184 @@ $('t-list').addEventListener('click', run(async (e) => {
   const text = await (await fetch(`/api/transcripts/${id}/txt`)).text();
   await editDialog({ title: 'Transcript', text, rows: 18, ok: 'Close', help: 'Select and copy what you need, or download the TXT / SRT / VTT.' });
 }));
+
+// ---------- HELP ----------
+// The guides are the Markdown files in studio/help (also read on GitHub). #help/<guide>/<section> opens one.
+const HELP_FOR = { create: 'making-voiceovers', batches: 'batches', batch: 'batches', voices: 'voices', transcribe: 'transcribe',
+  models: 'setup-and-models', setup: 'setup-and-models', connect: 'connect', settings: 'settings', words: 'pronunciation' };
+S.help = { docs: {}, toc: null };
+
+// GitHub's heading ids: lower case, punctuation dropped, spaces to hyphens ("3. Setup: two downloads" -> "3-setup-two-downloads").
+const slugify = (t) => t.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^\p{L}\p{N}\s_-]/gu, '').trim().replace(/\s/g, '-');
+
+function helpHref(href, page) {
+  if (/^[a-z]+:/i.test(href)) return { href, external: true };
+  const [file, anchor] = href.split('#');
+  if (!file) return { href: `#help/${page}/${anchor}` };
+  if (!file.endsWith('.md')) return { href: `/help-files/${file}`, external: true };
+  const name = file.replace(/\.md$/, '');
+  return { href: `#help${name === 'README' ? '' : `/${name}`}${anchor ? `${name === 'README' ? '/README' : ''}/${anchor}` : ''}` };
+}
+
+function mdInline(text, page) {
+  const codes = [];
+  let s = esc(text).replace(/`([^`]+)`/g, (_, c) => `\u0000${codes.push(c) - 1}\u0000`);
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => `<img src="${/^[a-z]+:/i.test(src) ? src : `/help-files/${src}`}" alt="${alt}" loading="lazy">`);
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, label, href) => {
+    const h = helpHref(href.replace(/&amp;/g, '&'), page);
+    return `<a href="${esc(h.href)}"${h.external ? ' target="_blank" rel="noopener"' : ''}>${label}</a>`;
+  });
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, '$1<em>$2</em>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${codes[i]}</code>`);
+}
+
+// Just the Markdown the guides use: headings, paragraphs, lists (one level of nesting), tables, quotes, code, images.
+function mdRender(md, page) {
+  const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let i = 0;
+  const isBlockStart = (l) => /^(#{1,4}\s|```|>|\|)/.test(l) || /^\s*([-*]|\d+\.)\s/.test(l) || !l.trim();
+  const list = (indent) => {
+    const ordered = /^\s*\d+\./.test(lines[i]);
+    const items = [];
+    while (i < lines.length) {
+      const m = lines[i].match(/^(\s*)([-*]|\d+\.)\s+(.*)$/);
+      if (!m || m[1].length !== indent) {
+        if (m && m[1].length > indent && items.length) { items[items.length - 1].sub += list(m[1].length); continue; }
+        if (!m && lines[i].trim() && /^\s+/.test(lines[i]) && items.length) { items[items.length - 1].text += ' ' + lines[i].trim(); i++; continue; }
+        break;
+      }
+      items.push({ text: m[3], sub: '' }); i++;
+    }
+    const tag = ordered ? 'ol' : 'ul';
+    return `<${tag}>${items.map((it) => `<li>${mdInline(it.text, page)}${it.sub}</li>`).join('')}</${tag}>`;
+  };
+  while (i < lines.length) {
+    const l = lines[i];
+    if (!l.trim()) { i++; continue; }
+    let m;
+    if (l.startsWith('```')) {
+      const code = [];
+      for (i++; i < lines.length && !lines[i].startsWith('```'); i++) code.push(lines[i]);
+      i++;
+      out.push(`<div class="code"><button class="icon-btn copy" data-copy="${esc(code.join('\n'))}" aria-label="Copy">${icon('copy')}</button>${esc(code.join('\n'))}</div>`);
+    } else if ((m = l.match(/^(#{1,4})\s+(.*)$/))) {
+      const n = m[1].length, html = mdInline(m[2], page);
+      out.push(`<h${n} id="h-${slugify(m[2])}">${html}</h${n}>`); i++;
+    } else if (/^\s*!\[[^\]]*\]\([^)]+\)\s*$/.test(l)) {
+      out.push(`<figure>${mdInline(l.trim(), page)}</figure>`); i++;
+    } else if (l.startsWith('>')) {
+      const q = [];
+      for (; i < lines.length && lines[i].startsWith('>'); i++) q.push(lines[i].replace(/^>\s?/, ''));
+      out.push(`<aside class="tip">${mdInline(q.join(' '), page)}</aside>`);
+    } else if (l.startsWith('|')) {
+      const rows = [];
+      for (; i < lines.length && lines[i].startsWith('|'); i++) rows.push(lines[i].trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()));
+      const [head, , ...body] = rows;
+      out.push(`<div class="table-wrap"><table class="plain"><tr>${head.map((c) => `<th>${mdInline(c, page)}</th>`).join('')}</tr>${body.map((r) => `<tr>${r.map((c) => `<td>${mdInline(c, page)}</td>`).join('')}</tr>`).join('')}</table></div>`);
+    } else if (/^\s*([-*]|\d+\.)\s/.test(l)) {
+      out.push(list(l.match(/^\s*/)[0].length));
+    } else {
+      const p = [];
+      for (; i < lines.length && lines[i].trim() && !(p.length && isBlockStart(lines[i])); i++) p.push(lines[i].trim());
+      out.push(`<p>${mdInline(p.join(' '), page)}</p>`);
+    }
+  }
+  return out.join('\n');
+}
+
+async function helpDoc(name) {
+  if (!(name in S.help.docs)) {
+    const r = await fetch(`/help-files/${name}.md`);
+    if (!r.ok) throw new Error('That guide could not be found.');
+    S.help.docs[name] = (await r.text()).replace(/\r\n?/g, '\n');  // a Windows checkout may have CRLF line ends
+  }
+  return S.help.docs[name];
+}
+
+// The contents come from README.md: each ## heading is a group, each link under it a guide.
+async function helpToc() {
+  if (S.help.toc) return S.help.toc;
+  const groups = [];
+  for (const line of (await helpDoc('README')).split('\n')) {
+    const h = line.match(/^##\s+(.*)$/);
+    if (h) { groups.push({ title: h[1], guides: [] }); continue; }
+    const g = line.match(/^- \[([^\]]+)\]\(([\w-]+)\.md\)/);
+    if (g && groups.length) groups[groups.length - 1].guides.push({ title: g[1], name: g[2] });
+  }
+  S.help.toc = groups;
+  return groups;
+}
+
+function renderHelpToc(current) {
+  const groups = S.help.toc || [];
+  setHtml($('help-toc'), `<a href="#help" class="${current === 'README' ? 'on' : ''}">${icon('text')} All guides</a>`
+    + groups.map((g) => `<div class="micro">${esc(g.title)}</div>${g.guides.map((d) => `<a href="#help/${d.name}" class="${d.name === current ? 'on' : ''}">${esc(d.title)}</a>`).join('')}`).join(''));
+}
+
+async function loadHelp() {
+  const [, name = 'README', section] = location.hash.slice(1).split('/').map(decodeURIComponent);
+  if ($('help-search').value.trim()) { $('help-search').value = ''; }
+  try {
+    await helpToc();
+    renderHelpToc(name);
+    const md = await helpDoc(name);
+    $('help-doc').innerHTML = mdRender(md, name);
+    $('help-doc')._html = null;
+  } catch (e) {
+    $('help-doc').innerHTML = `<p class="err-note">${esc(e.message)}</p><p><a href="#help">All guides</a></p>`;
+    return;
+  }
+  // The top bar is sticky and its height changes with the window's width: scroll to just below it.
+  const bar = document.querySelector('.appbar').offsetHeight;
+  document.documentElement.style.setProperty('--appbar-h', `${bar}px`);
+  const target = section && document.getElementById(`h-${section}`);
+  requestAnimationFrame(() => window.scrollTo(0, target ? target.getBoundingClientRect().top + scrollY - bar - 16 : 0));
+}
+
+// Search: every guide, by section; the best matches with a line of context.
+let helpTimer;
+$('help-search').addEventListener('input', () => {
+  clearTimeout(helpTimer);
+  helpTimer = setTimeout(run(async () => {
+    const q = $('help-search').value.trim().toLowerCase();
+    if (!q) return loadHelp();
+    const toc = await helpToc();
+    const words = q.split(/\s+/).filter(Boolean);
+    const hits = [];
+    for (const g of toc) {
+      for (const d of g.guides) {
+        const md = await helpDoc(d.name);
+        let head = d.title, anchor = '', body = [];
+        const flush = () => {
+          const text = body.join(' ').replace(/[`*#|>]/g, ' ').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\s+/g, ' ').trim();
+          const hay = `${head} ${text}`.toLowerCase();
+          if (words.every((w) => hay.includes(w))) {
+            const score = words.reduce((n, w) => n + (head.toLowerCase().includes(w) ? 5 : 0) + hay.split(w).length - 1, 0);
+            const at = Math.max(0, text.toLowerCase().indexOf(words[0]) - 60);
+            hits.push({ guide: d.title, name: d.name, head, anchor, score, snip: (at ? '…' : '') + text.slice(at, at + 180) + (text.length > at + 180 ? '…' : '') });
+          }
+        };
+        for (const line of md.split('\n')) {
+          const h = line.match(/^#{1,4}\s+(.*)$/);
+          if (h) { flush(); head = h[1]; anchor = line.startsWith('# ') ? '' : slugify(h[1]); body = []; } else body.push(line);
+        }
+        flush();
+      }
+    }
+    hits.sort((a, b) => b.score - a.score);
+    const mark = (t) => esc(t).replace(new RegExp(`(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi'), '<mark>$1</mark>');
+    $('help-doc').innerHTML = `<h1>Search: “${esc(q)}”</h1>` + (hits.length
+      ? hits.slice(0, 25).map((h) => `<a class="hit" href="#help/${h.name}${h.anchor ? `/${h.anchor}` : ''}"><span class="micro">${esc(h.guide)}</span><b>${mark(h.head)}</b><span>${mark(h.snip)}</span></a>`).join('')
+      : '<p>Nothing found. Try fewer or other words, or browse the guides on the left.</p>');
+  }), 200);
+});
+$('help-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('help-search').value = ''; loadHelp(); } });
+
+// A "Help" link on every page, to its guide.
+for (const [view, guide] of Object.entries(HELP_FOR)) {
+  $(`view-${view}`).querySelector('.title-row')?.insertAdjacentHTML('beforeend', `<a class="page-help" href="#help/${guide}">${icon('question')} Help</a>`);
+}
 
 // ---------- start ----------
 paintIcons();
