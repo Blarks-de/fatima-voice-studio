@@ -33,7 +33,7 @@ too, in one *Singles* batch per day.
 
 ## A batch's page
 
-![A batch: each script with its player and files, and the parts below it](images/batch.webp)
+![A batch: each script with its player and files, and the parts below it, each with a coloured strip](images/batch.webp)
 
 At the top: the name (click the pencil to **rename** it; the folder is renamed too), the status, and how far along
 it is. The buttons:

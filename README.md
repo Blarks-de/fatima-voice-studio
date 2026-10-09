@@ -16,7 +16,7 @@ On a laptop RTX 5060 (8 GB) it speaks about **2.2× faster than real time**: a 1
 
 The sibling of [Fatima Image Studio](https://github.com/hassanxs/Fatima-Image-Studio).
 
-![Fatima Voice Studio: a batch of three scripts on the Create page, with another batch speaking in the queue](studio/help/images/create.webp)
+![Fatima Voice Studio: three scripts in Batch mode on the Create page, with the queue and how much audio you've made](studio/help/images/create.webp)
 
 ## Screenshots
 
@@ -25,8 +25,14 @@ The sibling of [Fatima Image Studio](https://github.com/hassanxs/Fatima-Image-St
 | ![Batches page: every batch is a folder on disk](studio/help/images/batches.webp) | ![A batch: each script with its WAV, MP3 and SRT, and every part with New take and Edit](studio/help/images/batch.webp) |
 | **Voices** | **Setup** |
 | ![Voices page: add a clip, or find a brand-new voice](studio/help/images/voices.webp) | ![Setup page: hardware check, recommended engine and model, speed test](studio/help/images/setup.webp) |
-| **Models** | **Hear it** |
-| ![Models page: every model with its licence](studio/help/images/models.webp) | [English sample](docs/samples/english-nova.mp3) (18 s) · [Spanish sample](docs/samples/spanish-lucia.mp3) (17 s)<br><br>Both made in the app on a laptop RTX 5060, with *found* voices (voices the model invented, nobody's real voice), levelled to −16 LUFS. |
+| **Models** | **Settings** |
+| ![Models page: every model with its licence](studio/help/images/models.webp) | ![Settings: defaults, speech, files, folders, appearance and updates](studio/help/images/settings.webp) |
+| **Dark mode** | **About** |
+| ![A batch in dark mode](studio/help/images/batch-dark.webp) | ![About: version, model licences, and this PC's details to copy into a problem report](studio/help/images/about.webp) |
+
+**Hear it:** [English sample](docs/samples/english-nova.mp3) (18 s) · [Spanish sample](docs/samples/spanish-lucia.mp3) (17 s).
+Both made in the app on a laptop RTX 5060, with *found* voices (voices the model invented, nobody's real voice),
+levelled to −16 LUFS.
 
 ## Download and install
 

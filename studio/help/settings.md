@@ -5,6 +5,8 @@ Open the menu button at the top right (the sliders icon, next to **?**). Its men
 **Connect** (see [Connect](connect.md)) and **About**: the version, the licences, and your PC's details to copy
 into a problem report.
 
+![The Settings page: defaults and speech on the left, files and folders in the middle, App and Updates on the right](images/settings.webp)
+
 Every change on the Settings page is saved as soon as you make it.
 
 ## Defaults for new scripts

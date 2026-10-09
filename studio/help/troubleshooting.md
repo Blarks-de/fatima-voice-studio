@@ -151,6 +151,8 @@ come from git instead. You can always install a new version by running its insta
 
 ## Still stuck?
 
+![The About page: the version, your models' licences, and This PC with Copy details and Report a problem](images/about.webp)
+
 1. Open the log: **Settings → Folders → Logs**. `studio.log` (the app) and `engine.log` (the engine) say what went wrong, in more
    detail than the page.
 2. Open **About** (in the menu at the top right) and click **Copy details**: your version, Windows, graphics card,
