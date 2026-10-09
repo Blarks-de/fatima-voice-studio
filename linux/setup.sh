@@ -38,8 +38,10 @@ check_llama_tts() {
     return 0
   fi
   ok "llama-tts: $tts"
-  # "llama-tts --version" prints "version: <build> (<commit>)" among other lines
-  build="$("$tts" --version 2>&1 | sed -n 's/^version: b\{0,1\}\([0-9][0-9]*\).*/\1/p' | head -n 1 || true)"
+  # "llama-tts --version" prints "version: 0.3.0-dev (build 10689, commit ...)" (newer builds) or
+  # "version: 10689 (<commit>)" (older ones). Don't take the first number of "0.3.0-dev" for the build.
+  build="$("$tts" --version 2>&1 | sed -n -e 's/^version: .*(build \([0-9][0-9]*\).*/\1/p' \
+    -e 's/^version: b\{0,1\}\([0-9][0-9]*\) (.*/\1/p' | head -n 1 || true)"
   if [ -z "$build" ]; then
     warn "llama-tts: couldn't read the build number from '$tts --version'. The app needs llama.cpp b$LLAMA_MIN_BUILD or newer."
   elif [ "$build" -lt "$LLAMA_MIN_BUILD" ]; then
