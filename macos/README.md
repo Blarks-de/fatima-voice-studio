@@ -56,11 +56,11 @@ recovery, video/M4A).
 | Area | Status |
 |---|---|
 | Smoke test (`test_smoke.py`) | done |
-| Speech synthesis (TTS) | not yet tested |
+| Speech synthesis (TTS) | done — Qwen3-TTS Q8 downloaded and spoken on this Mac |
 | Voice cloning | not yet tested |
-| Whisper subtitles/transcripts | not yet tested |
+| Whisper subtitles/transcripts | not yet tested (whisper-small downloaded, not yet run) |
 | Pause/resume, `kill -9` recovery | not yet tested |
 | Video/M4A input | not yet tested |
-| Tray icon | not yet tested |
+| Tray icon | not yet tested — crashes with SIGTRAP when started from a sandboxed/headless shell (no WindowServer access); needs a real interactive Terminal session |
 | Autostart (LaunchAgent) | not yet tested |
 | `--service` (background LaunchAgent) | not yet tested |
