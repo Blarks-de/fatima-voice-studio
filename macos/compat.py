@@ -77,6 +77,69 @@ def llama_build() -> str | None:
     return f"b{m.group(1)}" if m else None
 
 
+def _link(target: str | None, link: Path) -> None:
+    """Keep link -> target in step with what is installed (the app expects <engine dir>/<exe>)."""
+    try:
+        if target is None:
+            if link.is_symlink():
+                link.unlink()
+            return
+        if link.is_symlink() and os.readlink(link) == target:
+            return
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.unlink(missing_ok=True)
+        link.symlink_to(target)
+    except OSError:
+        pass
+
+
+def _link_tools() -> None:
+    home = fvs_home()
+    _link(find_tool("FVS_LLAMA_TTS", "llama-tts"), home / "engine" / SYSTEM_ENGINE / "llama-tts")
+    _link(find_tool("FVS_WHISPER_CLI", "whisper-cli"), home / "engine" / "whisper" / "whisper-cli")
+
+
+def _patch_config() -> None:
+    from studio import config
+
+    home = fvs_home()
+    config.HOME = home
+    config.DATA = home / "data"
+    config.CONFIG_FILE = config.DATA / "config.json"
+    config.VOICES = home / "voices"
+    music = music_dir()
+    config.MUSIC = music
+    d = config.DEFAULTS
+    d["batches_dir"] = str(music / "Batches")
+    d["exports_dir"] = str(music / "Exports")
+    d["models_dir"] = str(home / "models")
+    d["engine"] = SYSTEM_ENGINE
+    d["check_updates"] = False
+
+    config.ENGINE_RELEASE = llama_build() or "not found"
+    config.ENGINE_EXE = "llama-tts"
+    config.WHISPER_EXE = "whisper-cli"
+    config.ENGINES.clear()
+    config.ENGINES[SYSTEM_ENGINE] = {
+        "label": "System · llama.cpp",
+        "about": "The llama-tts installed on this PC (Metal on Apple Silicon, or CPU). Nothing to download here: "
+                 "install llama.cpp (build b10270 or newer) with Homebrew (brew install llama.cpp) or build it "
+                 "yourself with Metal (see build-llama.sh), then press Check again.",
+        "zips": [], "gpu": True}
+
+    def engine_dir(cfg: dict, key: str | None = None) -> Path:
+        return home / "engine" / (key or cfg["engine"])
+
+    def installed_engines(cfg: dict) -> list[str]:
+        _link_tools()
+        return [k for k in config.ENGINES if (engine_dir(cfg, k) / config.ENGINE_EXE).exists()]
+
+    config.engine_dir = engine_dir
+    config.installed_engines = installed_engines
+    config.whisper_dir = lambda: home / "engine" / "whisper"
+    config.tool_dir = lambda key: home / "engine" / key
+
+
 # ---- entry ----------------------------------------------------------------------------------------------
 
 def apply() -> None:
@@ -86,4 +149,6 @@ def apply() -> None:
     if sys.platform != "darwin" or platform.machine() != "arm64":
         raise RuntimeError("macos/compat.py is for Apple Silicon Macs only.")
     sys.path.insert(0, str(REPO))
+    _patch_config()
+    _link_tools()
     _applied = True
