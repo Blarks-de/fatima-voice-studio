@@ -167,6 +167,102 @@ class RuntimeChecks(unittest.TestCase):
         from studio import config as c
         self.assertEqual(c.ENGINE_RELEASE, self.compat.llama_build() or "not found")
 
+    def _client(self):
+        from fastapi.testclient import TestClient
+        from studio import config, app
+        return TestClient(app.create_app(config.load()), headers={"X-Studio": "1"})
+
+    def test_ffmpeg_is_the_system_one_never_a_windows_exe(self):
+        from studio import media, config
+        fake_exe = config.tool_dir("ffmpeg") / "ffmpeg.exe"
+        fake_exe.parent.mkdir(parents=True, exist_ok=True)
+        fake_exe.write_text("MZ not a macOS program")
+        self.addCleanup(fake_exe.unlink, missing_ok=True)
+        with tempfile.TemporaryDirectory() as bindir:
+            real = Path(bindir) / "ffmpeg"
+            real.write_text("#!/bin/sh\n")
+            real.chmod(0o755)
+            old_path = os.environ["PATH"]
+            os.environ["PATH"] = bindir
+            try:
+                self.assertEqual(media.ffmpeg_exe(), str(real), "ffmpeg.exe must not win over the system ffmpeg")
+                self.assertEqual(media.ffmpeg_source(), "system")
+            finally:
+                os.environ["PATH"] = old_path
+            os.environ["PATH"] = bindir + "/nothing-here"
+            try:
+                self.assertIsNone(media.ffmpeg_exe(), "ffmpeg.exe must not be used when there is no system ffmpeg")
+                self.assertIsNone(media.ffmpeg_source())
+            finally:
+                os.environ["PATH"] = old_path
+
+    def test_no_windows_ffmpeg_download_is_offered_or_started(self):
+        from studio import config
+        c = self._client()
+        tools = c.get("/api/tools").json()
+        self.assertEqual([t["key"] for t in tools], ["ffmpeg"])
+        self.assertTrue(tools[0]["system_only"])
+        self.assertEqual(tools[0]["size"], 0)
+        r = c.post("/api/tools/ffmpeg/download")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("ffmpeg", r.json()["detail"])
+        self.assertFalse((config.tool_dir("ffmpeg") / "ffmpeg.exe").exists())
+
+    def test_system_engine_has_no_download(self):
+        c = self._client()
+        eng = next(e for e in c.get("/api/setup").json()["engines"] if e["key"] == "system")
+        self.assertEqual(eng["size"], 0)
+        r = c.post("/api/setup/engines/system/download")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("nothing to download", r.json()["detail"])
+
+    def test_whisper_model_download_skips_the_windows_zip(self):
+        from studio import downloads, config
+        d = downloads.Downloads(config.load())
+        self.assertFalse(d._whisper_missing(), "no Windows whisper-bin-x64.zip must ever be requested on macOS")
+        for m in d.status():
+            if m["kind"] == "subtitles":
+                self.assertIn("build-whisper.sh", m["about"])
+
+    def test_missing_whisper_cli_gets_a_clear_warning(self):
+        from studio import config, hardware
+        cfg = config.load()
+        folder = Path(cfg["models_dir"])
+        folder.mkdir(parents=True, exist_ok=True)
+        model = folder / config.MODELS["whisper-base"]["files"][0]
+        model.write_bytes(b"x")
+        self.addCleanup(model.unlink, missing_ok=True)
+        old = os.environ.get("FVS_WHISPER_CLI")
+        os.environ["FVS_WHISPER_CLI"] = "/nonexistent/whisper-cli"
+        try:
+            hw = hardware.detect(True)
+            msgs = [w["message"] for w in hardware.warnings(hw, cfg, "system")]
+        finally:
+            if old is None:
+                del os.environ["FVS_WHISPER_CLI"]
+            else:
+                os.environ["FVS_WHISPER_CLI"] = old
+        self.assertTrue(any("./build-whisper.sh" in m or "brew install whisper-cpp" in m for m in msgs), msgs)
+
+    def test_hardware(self):
+        from studio import hardware as h
+        self.assertIs(h._registry_gpus, self.compat._apple_gpus)
+        self.assertEqual(h.recommended_engine({}), "system")
+        gpus = h._registry_gpus()
+        self.assertEqual(len(gpus), 1)
+        self.assertFalse(gpus[0]["integrated"], "a non-integrated GPU is what main_gpu() picks for model_fit()")
+        self.assertGreater(gpus[0]["vram_gb"], 0)
+        self.assertEqual(gpus[0]["vram_gb"], h._ram_gb(), "unified memory: GPU memory is RAM")
+        self.assertGreater(h._ram_gb(), 0)
+        self.assertIsInstance(h._cpu(), str)
+        self.assertIn(h.on_battery(), (None, True, False))
+
+    def test_model_fit_uses_the_full_unified_memory(self):
+        from studio import hardware as h
+        hw = h.detect(True)
+        # this Mac has 32 GB unified memory; qwen3-tts-q8 must fit without falling back to Q4/CPU
+        self.assertEqual(h.model_fit("qwen3-tts-q8", hw, "system"), "fits")
+
     def test_wrong_architecture_is_rejected(self):
         self.compat._applied = False
         try:
