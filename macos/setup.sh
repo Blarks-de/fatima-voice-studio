@@ -46,7 +46,12 @@ if [ ! -x .venv/bin/python ]; then
 fi
 echo "Installing dependencies ..."
 uv pip install --python .venv/bin/python -r requirements-macos.txt
-.venv/bin/python run.py --check && ok "app imports cleanly"
+if .venv/bin/python run.py --check; then
+  ok "app imports cleanly"
+else
+  echo "The app failed to import (see the traceback above). Not an Apple Silicon Mac? This port needs one." >&2
+  exit 1
+fi
 
 echo "Checking tools:"
 check_llama_tts
@@ -62,6 +67,9 @@ ok "trash and folder dialog (osascript, built into macOS)"
 if [ "$service" = 1 ]; then
   mkdir -p ~/Library/LaunchAgents
   .venv/bin/python -c 'import sys; sys.path.insert(0, "."); import compat; compat.write_service_plist()'
+  # unload any previous version of the job first: `launchctl load` on one that's already loaded fails on
+  # current macOS, which would otherwise make a second ./setup.sh --service (e.g. after a code update) abort.
+  launchctl unload ~/Library/LaunchAgents/de.blarks.fatima-voice-studio.service.plist 2>/dev/null || true
   launchctl load -w ~/Library/LaunchAgents/de.blarks.fatima-voice-studio.service.plist
   ok "LaunchAgent service installed (log: ~/Library/Logs/fatima-voice-studio.log)"
 fi

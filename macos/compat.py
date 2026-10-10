@@ -21,6 +21,7 @@ What it does:
 """
 import os
 import platform
+import plistlib
 import re
 import subprocess
 import sys
@@ -43,13 +44,29 @@ def music_dir() -> Path:
     return Path(os.environ.get("FVS_MUSIC_DIR") or Path.home() / "Music") / "Fatima Voice Studio"
 
 
-def find_tool(env: str, name: str) -> str | None:
-    """A tool path from an environment variable, else from PATH, else the local fallback build."""
+_HOMEBREW_BIN_DIRS = ["/opt/homebrew/bin", "/usr/local/bin"]
+
+
+def _which(name: str) -> str | None:
+    """shutil.which(), falling back to the common Homebrew locations. launchd starts LaunchAgents (autostart,
+    --service) with a minimal PATH that doesn't include Homebrew, so PATH alone isn't enough (final review C1)."""
     import shutil
+    found = shutil.which(name)
+    if found:
+        return found
+    for d in _HOMEBREW_BIN_DIRS:
+        candidate = Path(d) / name
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def find_tool(env: str, name: str) -> str | None:
+    """A tool path from an environment variable, else from PATH/Homebrew, else the local fallback build."""
     given = os.environ.get(env)
     if given:
         return given if Path(given).exists() else None
-    on_path = shutil.which(name)
+    on_path = _which(name)
     if on_path:
         return on_path
     local = MACOS_DIR / "bin" / name  # built by build-llama.sh / build-whisper.sh
@@ -154,7 +171,6 @@ WHISPER_WARNING = ("Subtitles and transcripts need whisper-cli, which was not fo
 def _patch_tools() -> None:
     """studio/ downloads Windows programs (ffmpeg.exe, whisper-cli.exe) and prefers its own ffmpeg.exe over the
     system one. None of that is wanted here: use the system ffmpeg, never an ffmpeg.exe, and tell the user what to do."""
-    import shutil
     from fastapi import HTTPException
     # studio/hardware.py does `import winreg` unconditionally. Stub it so this import succeeds; _patch_hardware
     # does the same dance later, but by then studio.hardware is already cached in sys.modules, so it's a no-op.
@@ -164,8 +180,8 @@ def _patch_tools() -> None:
     finally:
         del sys.modules["winreg"]
 
-    media.ffmpeg_exe = lambda: shutil.which("ffmpeg")
-    media.ffmpeg_source = lambda: "system" if shutil.which("ffmpeg") else None
+    media.ffmpeg_exe = lambda: _which("ffmpeg")
+    media.ffmpeg_source = lambda: "system" if _which("ffmpeg") else None
     config.TOOLS.clear()
     config.TOOLS["ffmpeg"] = {
         "label": "ffmpeg (video files)", "exe": "ffmpeg",
@@ -176,7 +192,7 @@ def _patch_tools() -> None:
     D = downloads.Downloads
 
     def tools(self) -> list[dict]:
-        t, found = config.TOOLS["ffmpeg"], bool(shutil.which("ffmpeg"))
+        t, found = config.TOOLS["ffmpeg"], bool(_which("ffmpeg"))
         return [{"key": "ffmpeg", "label": t["label"], "about": t["about"], "license": t["license"], "size": 0,
                  "installed": False, "on_pc": found, "ready": found, "partial": 0, "job": None, "system_only": True}]
 
@@ -262,13 +278,19 @@ def _as_literal(text: str) -> str:
 
 
 def _to_trash(path: Path) -> None:
-    path = Path(path).resolve()
+    # .absolute() does not follow symlinks (unlike .resolve()): trashing a symlink must trash the symlink
+    # itself, not whatever it points at (final review I8c).
+    path = Path(path).absolute()
     script = f'tell application "Finder" to delete (POSIX file {_as_literal(str(path))})'
     p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
     if p.returncode != 0:
         lines = (p.stderr or p.stdout).strip().splitlines()
+        # The most common real-world cause here is macOS not yet having granted this app permission to
+        # control Finder (System Settings > Privacy & Security > Automation) -- not a cross-volume limitation
+        # the way linux/'s gio-based trash has (final review I8a).
         raise OSError("Couldn't move it to the trash" + (f": {lines[-1]}" if lines else "")
-                      + ". The data folder has to be on the same drive as your home folder (see README, FVS_HOME).")
+                      + ". If this is the first time, macOS may be asking for permission for this app to "
+                        "control Finder (System Settings > Privacy & Security > Automation) -- allow it and try again.")
 
 
 def _pick_folder(start: str = "") -> str | None:
@@ -308,18 +330,13 @@ AUTOSTART_FILE = _LAUNCH_AGENTS_DIR / f"{LAUNCH_AGENT_LABEL}.plist"
 SERVICE_FILE = _LAUNCH_AGENTS_DIR / f"{SERVICE_LABEL}.plist"
 
 
-def _plist(label: str, args: list[str], extra: str = "") -> str:
-    items = "\n".join(f"        <string>{a}</string>" for a in args)
-    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
-           '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
-           '<plist version="1.0">\n<dict>\n'
-           f'    <key>Label</key><string>{label}</string>\n'
-           '    <key>ProgramArguments</key>\n    <array>\n'
-           f'{items}\n'
-           '    </array>\n'
-           '    <key>RunAtLoad</key><true/>\n'
-           f'{extra}'
-           '</dict>\n</plist>\n')
+def _plist(label: str, args: list[str], extra: dict | None = None) -> bytes:
+    """A LaunchAgent plist as bytes, built with plistlib so values with &, < or other XML-special characters
+    (e.g. a checkout path) come out correctly escaped instead of producing an invalid plist (final review I5)."""
+    data = {"Label": label, "ProgramArguments": args, "RunAtLoad": True}
+    if extra:
+        data.update(extra)
+    return plistlib.dumps(data)
 
 
 def _patch_autostart() -> None:
@@ -327,13 +344,14 @@ def _patch_autostart() -> None:
     autostart.enabled = lambda: AUTOSTART_FILE.exists()
 
     def set_enabled(on: bool) -> None:
+        # Only write or delete the plist: launchd reads ~/Library/LaunchAgents by itself at the next login,
+        # the same way linux/'s autostart .desktop file only needs to exist or not. Calling `launchctl load`/
+        # `unload` here would start a second instance immediately (RunAtLoad) or SIGTERM the running app if it
+        # was started by this very LaunchAgent (final review I1).
         if on:
             AUTOSTART_FILE.parent.mkdir(parents=True, exist_ok=True)
-            AUTOSTART_FILE.write_text(_plist(LAUNCH_AGENT_LABEL, [sys.executable, str(MACOS_DIR / "run.py"), "--no-browser"]),
-                                      encoding="utf-8")
-            subprocess.run(["launchctl", "load", "-w", str(AUTOSTART_FILE)], capture_output=True)
+            AUTOSTART_FILE.write_bytes(_plist(LAUNCH_AGENT_LABEL, [str(MACOS_DIR / "fatima-voice-studio"), "--no-browser"]))
         else:
-            subprocess.run(["launchctl", "unload", str(AUTOSTART_FILE)], capture_output=True)
             AUTOSTART_FILE.unlink(missing_ok=True)
 
     autostart.set_enabled = set_enabled
@@ -343,15 +361,15 @@ def _patch_autostart() -> None:
 
 def write_service_plist() -> None:
     """Installs a LaunchAgent that keeps the app running in the background and restarts it if it crashes
-    (macOS has no systemd; this is the --service counterpart to linux/setup.sh --service). Called from setup.sh."""
+    (macOS has no systemd; this is the --service counterpart to linux/setup.sh --service). Called from setup.sh.
+    KeepAlive only restarts on a crash, not a clean exit: __main__.already_running() makes a second instance
+    (e.g. the service starting while the app is already running some other way) exit 0, and a plain
+    KeepAlive=true would make launchd relaunch it forever in that case (final review I3)."""
     log = Path.home() / "Library" / "Logs" / "fatima-voice-studio.log"
     log.parent.mkdir(parents=True, exist_ok=True)
-    extra = ('    <key>KeepAlive</key><true/>\n'
-            f'    <key>StandardOutPath</key><string>{log}</string>\n'
-            f'    <key>StandardErrorPath</key><string>{log}</string>\n')
+    extra = {"KeepAlive": {"SuccessfulExit": False}, "StandardOutPath": str(log), "StandardErrorPath": str(log)}
     SERVICE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SERVICE_FILE.write_text(_plist(SERVICE_LABEL, [sys.executable, str(MACOS_DIR / "run.py"), "--no-tray", "--no-browser"], extra),
-                            encoding="utf-8")
+    SERVICE_FILE.write_bytes(_plist(SERVICE_LABEL, [str(MACOS_DIR / "fatima-voice-studio"), "--no-tray", "--no-browser"], extra))
 
 
 def _patch_updater() -> None:

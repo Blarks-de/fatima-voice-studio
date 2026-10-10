@@ -117,6 +117,24 @@ class StaticChecks(unittest.TestCase):
                 r = subprocess.run(["bash", "-n", str(HERE / name)], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_setup_sh_check_step_does_not_swallow_a_failure(self):
+        """Final review I7: `cmd && ok ...` does not trip `set -e` when cmd fails (only a bare `cmd` on its own
+        line does), so the old setup.sh printed 'ok' for every later step and exited 0 even if the app failed
+        to import (e.g. an Intel Mac hitting the Apple-Silicon-only guard)."""
+        script = (HERE / "setup.sh").read_text(encoding="utf-8")
+        line = next(l for l in script.splitlines() if "run.py --check" in l)
+        self.assertNotIn("&&", line, f"'{line}' must check the exit code explicitly, not rely on && after it")
+
+    def test_setup_sh_service_can_be_rerun(self):
+        """Final review I4: `launchctl load` on a job that's already loaded fails on current macOS, and
+        set -e then aborts the script before anything else in the --service block runs. A previous job must be
+        removed first so running `./setup.sh --service` again (e.g. after a code update) doesn't just fail."""
+        script = (HERE / "setup.sh").read_text(encoding="utf-8")
+        service_block = script.split('if [ "$service" = 1 ]')[1].split("\nfi", 1)[0]
+        self.assertIn("unload", service_block)
+        load_pos, unload_pos = service_block.index("load -w"), service_block.index("unload")
+        self.assertLess(unload_pos, load_pos, "the existing job must be unloaded before (re)loading it")
+
     def test_pdeath_wrap_is_syntactically_valid(self):
         r = subprocess.run(["bash", "-n", str(HERE / "pdeath-wrap.sh")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -147,6 +165,17 @@ class RuntimeChecks(unittest.TestCase):
         root = Path(self.tmp.name)
         self.assertEqual(self.compat.fvs_home(), root / "home")
         self.assertEqual(self.compat.music_dir(), root / "music" / "Fatima Voice Studio")
+
+    def test_find_tool_falls_back_to_homebrew_paths_when_path_is_minimal(self):
+        """launchd starts LaunchAgents with a minimal PATH that doesn't include Homebrew (final review C1)."""
+        old_path = os.environ["PATH"]
+        os.environ["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        try:
+            found = self.compat.find_tool("FVS_LLAMA_TTS", "llama-tts")
+            self.assertIsNotNone(found, "llama-tts (installed via Homebrew on this Mac) must still be found")
+            self.assertTrue(found.startswith("/opt/homebrew/") or found.startswith("/usr/local/"), found)
+        finally:
+            os.environ["PATH"] = old_path
 
     def test_llama_build_is_read_from_every_known_version_format(self):
         script = Path(self.tmp.name) / "fake-llama-tts"
@@ -206,11 +235,25 @@ class RuntimeChecks(unittest.TestCase):
             finally:
                 os.environ["PATH"] = old_path
             os.environ["PATH"] = bindir + "/nothing-here"
+            old_homebrew_dirs = self.compat._HOMEBREW_BIN_DIRS
+            self.compat._HOMEBREW_BIN_DIRS = [bindir + "/also-nothing-here"]  # this Mac has a real Homebrew ffmpeg
             try:
-                self.assertIsNone(media.ffmpeg_exe(), "ffmpeg.exe must not be used when there is no system ffmpeg")
+                self.assertIsNone(media.ffmpeg_exe(), "ffmpeg.exe must not be used when there is no system ffmpeg anywhere")
                 self.assertIsNone(media.ffmpeg_source())
             finally:
                 os.environ["PATH"] = old_path
+                self.compat._HOMEBREW_BIN_DIRS = old_homebrew_dirs
+
+    def test_ffmpeg_also_falls_back_to_homebrew_when_path_is_minimal(self):
+        """Same as find_tool's Homebrew fallback (final review C1), but for the ffmpeg lookup in _patch_tools."""
+        from studio import media
+        old_path = os.environ["PATH"]
+        os.environ["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        try:
+            self.assertIsNotNone(media.ffmpeg_exe(), "ffmpeg (installed via Homebrew on this Mac) must still be found")
+            self.assertEqual(media.ffmpeg_source(), "system")
+        finally:
+            os.environ["PATH"] = old_path
 
     def test_no_windows_ffmpeg_download_is_offered_or_started(self):
         from studio import config
@@ -293,35 +336,80 @@ class RuntimeChecks(unittest.TestCase):
 
     def test_trash_reports_a_clear_error_for_a_missing_file(self):
         missing = Path(self.tmp.name) / "does-not-exist"
-        with self.assertRaises(OSError):
+        with self.assertRaises(OSError) as cm:
             self.compat._to_trash(missing)
+        # final review I8(a): the old text ("has to be on the same drive as your home folder") was copied from
+        # linux/'s gio limitation and is wrong here -- Finder can trash across volumes. The real macOS failure
+        # mode is the Automation/TCC permission for controlling Finder.
+        self.assertNotIn("same drive", str(cm.exception))
+
+    def test_trash_does_not_resolve_a_symlink_to_its_target(self):
+        """Final review I8(c): Path.resolve() follows symlinks, so trashing a symlink used to trash whatever
+        it pointed at instead of the symlink itself."""
+        import unittest.mock as mock
+        target = Path(self.tmp.name) / "target-file"
+        target.write_text("x")
+        self.addCleanup(target.unlink, missing_ok=True)
+        link = Path(self.tmp.name) / "a-symlink"
+        link.symlink_to(target)
+        self.addCleanup(link.unlink, missing_ok=True)
+        with mock.patch("subprocess.run") as run:
+            run.return_value = subprocess.CompletedProcess([], 0)
+            self.compat._to_trash(link)
+            script = run.call_args.args[0][2]
+        self.assertIn(str(link), script)
+        self.assertNotIn(str(target), script)
 
     def test_autostart(self):
+        """Final review I1: toggling must not load/unload a live launchd job -- unload sends SIGTERM to a
+        running job, so disabling autostart would kill the app if it had been started by this LaunchAgent, and
+        load -w with RunAtLoad starts a second instance immediately. launchd reads ~/Library/LaunchAgents at
+        the next login by itself; only the plist file needs to exist or not (same as linux/'s .desktop file)."""
         file = self.compat.AUTOSTART_FILE
         if not str(file).startswith(self.tmp.name):
             self.skipTest("compat was imported before the test set FVS_LAUNCH_AGENTS_DIR; not touching the real one")
         import unittest.mock as mock
+        import plistlib
         from studio import autostart as a
         self.assertFalse(a.enabled())
         with mock.patch("subprocess.run") as run:
             a.set_enabled(True)
-            self.assertEqual(run.call_args.args[0][:2], ["launchctl", "load"])
+            run.assert_not_called()
         self.assertTrue(a.enabled())
-        self.assertIn(self.compat.LAUNCH_AGENT_LABEL, file.read_text(encoding="utf-8"))
+        data = plistlib.loads(file.read_bytes())
+        self.assertEqual(data["Label"], self.compat.LAUNCH_AGENT_LABEL)
+        self.assertEqual(data["ProgramArguments"][0], str(self.compat.MACOS_DIR / "fatima-voice-studio"))
+        self.assertIn("--no-browser", data["ProgramArguments"])
         with mock.patch("subprocess.run") as run:
             a.set_enabled(False)
-            self.assertEqual(run.call_args.args[0][:2], ["launchctl", "unload"])
+            run.assert_not_called()
         self.assertFalse(a.enabled())
 
     def test_service_plist_has_keepalive(self):
+        """Final review I3: KeepAlive must only restart the service on a crash, not on a clean exit -- a plain
+        <true/> makes launchd restart it forever if something else (a manual launch, or autostart) already has
+        the app running, since __main__.already_running() makes the service exit 0 and launchd relaunches it
+        every few seconds."""
         if not str(self.compat.SERVICE_FILE).startswith(self.tmp.name):
             self.skipTest("compat was imported before the test set FVS_LAUNCH_AGENTS_DIR; not touching the real one")
         self.compat.write_service_plist()
         self.addCleanup(self.compat.SERVICE_FILE.unlink, missing_ok=True)
-        xml = self.compat.SERVICE_FILE.read_text(encoding="utf-8")
-        self.assertIn(self.compat.SERVICE_LABEL, xml)
-        self.assertIn("<key>KeepAlive</key><true/>", xml)
-        self.assertIn("--no-tray", xml)
+        import plistlib
+        data = plistlib.loads(self.compat.SERVICE_FILE.read_bytes())
+        self.assertEqual(data["Label"], self.compat.SERVICE_LABEL)
+        self.assertEqual(data["KeepAlive"], {"SuccessfulExit": False})
+        self.assertEqual(data["ProgramArguments"][0], str(self.compat.MACOS_DIR / "fatima-voice-studio"))
+        self.assertIn("--no-tray", data["ProgramArguments"])
+
+    def test_plist_escapes_xml_special_characters(self):
+        """Final review I5: the old hand-built XML broke (invalid plist, silently ignored by launchd) on any
+        value containing & or < -- e.g. a checkout path like ~/Projects/R&D/fatima-voice-studio."""
+        import plistlib
+        xml = self.compat._plist("test.label", ["/bin/x", "a & b < c"])
+        data = plistlib.loads(xml)
+        self.assertEqual(data["Label"], "test.label")
+        self.assertEqual(data["ProgramArguments"], ["/bin/x", "a & b < c"])
+        self.assertTrue(data["RunAtLoad"])
 
     def test_updater_says_no(self):
         import asyncio
@@ -353,6 +441,29 @@ class RuntimeChecks(unittest.TestCase):
                 parent.kill()
             if proc.poll() is None:
                 proc.kill()
+
+    def test_pdeath_watcher_does_not_outlive_the_wrapped_process(self):
+        """Final review C2: the watcher used to only stop polling once the *app* (fake parent here) died, so a
+        quick command (engine.py starts llama-tts once per ~40s segment) left its watcher running for the rest
+        of the app's lifetime -- hundreds of them on a long batch -- and each one would later send kill -9 to a
+        pid that, by then, could have been reused by an unrelated process."""
+        parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(20)"])
+        try:
+            proc = subprocess.Popen([str(self.compat.PDEATH_WRAP), "true"],
+                                    env={**os.environ, "FVS_WATCH_PPID": str(parent.pid)})
+            proc.wait(timeout=5)
+            deadline = time.monotonic() + 5
+            leftover = "(not checked)"
+            while time.monotonic() < deadline:
+                leftover = subprocess.run(["pgrep", "-f", str(self.compat.PDEATH_WRAP)],
+                                          capture_output=True, text=True).stdout.strip()
+                if not leftover:
+                    break
+                time.sleep(0.2)
+            self.assertEqual(leftover, "", f"watcher(s) still running after the wrapped command exited: {leftover}")
+        finally:
+            if parent.poll() is None:
+                parent.kill()
 
     def test_tray_patch(self):
         try:
