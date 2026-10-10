@@ -24,6 +24,7 @@ import platform
 import re
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 MACOS_DIR = Path(__file__).resolve().parent
@@ -140,6 +141,121 @@ def _patch_config() -> None:
     config.tool_dir = lambda key: home / "engine" / key
 
 
+FFMPEG_HINT = "ffmpeg isn't installed on this PC. Install it with Homebrew (brew install ffmpeg), then reload this page."
+ENGINE_HINT = ("There is nothing to download for this engine. Install llama.cpp with Homebrew (brew install llama.cpp) "
+               "or build it yourself with Metal (see build-llama.sh), then press Check again.")
+WHISPER_NOTE = (" On macOS this also needs whisper-cli: brew install whisper-cpp, or run ./build-whisper.sh "
+                "(see macos/README.md).")
+WHISPER_WARNING = ("Subtitles and transcripts need whisper-cli, which was not found. Install it with Homebrew "
+                   "(brew install whisper-cpp) or run ./build-whisper.sh in the macos folder (see macos/README.md), "
+                   "then press Check again. The model download itself is fine.")
+
+
+def _patch_tools() -> None:
+    """studio/ downloads Windows programs (ffmpeg.exe, whisper-cli.exe) and prefers its own ffmpeg.exe over the
+    system one. None of that is wanted here: use the system ffmpeg, never an ffmpeg.exe, and tell the user what to do."""
+    import shutil
+    from fastapi import HTTPException
+    # studio/hardware.py does `import winreg` unconditionally. Stub it so this import succeeds; _patch_hardware
+    # does the same dance later, but by then studio.hardware is already cached in sys.modules, so it's a no-op.
+    sys.modules["winreg"] = types.ModuleType("winreg")
+    try:
+        from studio import config, downloads, hardware, media
+    finally:
+        del sys.modules["winreg"]
+
+    media.ffmpeg_exe = lambda: shutil.which("ffmpeg")
+    media.ffmpeg_source = lambda: "system" if shutil.which("ffmpeg") else None
+    config.TOOLS.clear()
+    config.TOOLS["ffmpeg"] = {
+        "label": "ffmpeg (video files)", "exe": "ffmpeg",
+        "about": "Lets the app read video files (MP4, MKV, MOV, WEBM…) and M4A/AAC for transcripts and voice clips. "
+                 "On macOS this is the ffmpeg installed on this PC, nothing is downloaded: install it with Homebrew "
+                 "(brew install ffmpeg), then reload this page.",
+        "license": "Installed separately via Homebrew"}
+    D = downloads.Downloads
+
+    def tools(self) -> list[dict]:
+        t, found = config.TOOLS["ffmpeg"], bool(shutil.which("ffmpeg"))
+        return [{"key": "ffmpeg", "label": t["label"], "about": t["about"], "license": t["license"], "size": 0,
+                 "installed": False, "on_pc": found, "ready": found, "partial": 0, "job": None, "system_only": True}]
+
+    def start_tool(self, key: str) -> None:
+        raise HTTPException(409, FFMPEG_HINT)
+
+    def delete_tool(self, key: str) -> None:
+        raise HTTPException(409, "ffmpeg is the system's own copy; the app doesn't manage it.")
+
+    D.tools, D.start_tool, D.delete_tool = tools, start_tool, delete_tool
+
+    real_start_engine = D.start_engine
+
+    def start_engine(self, key: str) -> None:
+        if not config.ENGINES.get(key, {}).get("zips"):
+            raise HTTPException(409, ENGINE_HINT)
+        real_start_engine(self, key)
+
+    D.start_engine = start_engine
+
+    D._whisper_missing = lambda self: False
+    for m in config.MODELS.values():
+        if m["kind"] == "subtitles":
+            m["about"] += WHISPER_NOTE
+
+    real_warnings = hardware.warnings
+
+    def warnings(hw: dict, cfg: dict, engine: str) -> list[dict]:
+        out = real_warnings(hw, cfg, engine)
+        if config.subtitles_model(cfg) and not find_tool("FVS_WHISPER_CLI", "whisper-cli"):
+            out.append({"level": "warn", "code": "no_whisper_cli", "message": WHISPER_WARNING})
+        return out
+
+    hardware.warnings = warnings
+
+
+def _ram_gb() -> float:
+    out = _run(["sysctl", "-n", "hw.memsize"])
+    try:
+        return round(int(out.strip()) / 1024**3, 1)
+    except ValueError:
+        return 0.0
+
+
+def _cpu() -> str:
+    return _run(["sysctl", "-n", "machdep.cpu.brand_string"]).strip() or "Unknown CPU"
+
+
+def _on_battery() -> bool | None:
+    """None on a Mac with no battery (e.g. a Mac mini)."""
+    out = _run(["pmset", "-g", "batt"])
+    lines = out.splitlines()
+    if not lines or "InternalBattery" not in out:
+        return None
+    return "Battery Power" in lines[0]
+
+
+def _apple_gpus() -> list[dict]:
+    """Apple Silicon has no separate VRAM: the GPU shares the Mac's RAM (unified memory)."""
+    return [{"name": f"{_cpu()} (unified memory)", "vendor": "apple", "vram_gb": _ram_gb(), "driver": "Metal",
+             "integrated": False}]
+
+
+def _patch_hardware() -> None:
+    # studio/hardware.py does `import winreg`. The stub exists only for that import: left in sys.modules it makes
+    # the standard library (mimetypes) believe it is on Windows and crash on every static file.
+    import mimetypes  # noqa: F401  (loaded before the stub, so it never sees it)
+    sys.modules["winreg"] = types.ModuleType("winreg")
+    try:
+        from studio import hardware
+    finally:
+        del sys.modules["winreg"]
+    hardware._registry_gpus = _apple_gpus
+    hardware._ram_gb = _ram_gb
+    hardware._cpu = _cpu
+    hardware.on_battery = _on_battery
+    hardware.recommended_engine = lambda hw: SYSTEM_ENGINE
+
+
 # ---- entry ----------------------------------------------------------------------------------------------
 
 def apply() -> None:
@@ -150,5 +266,7 @@ def apply() -> None:
         raise RuntimeError("macos/compat.py is for Apple Silicon Macs only.")
     sys.path.insert(0, str(REPO))
     _patch_config()
+    _patch_tools()
+    _patch_hardware()
     _link_tools()
     _applied = True
