@@ -101,6 +101,16 @@ class StaticChecks(unittest.TestCase):
                          f"engine.py no longer passes {sorted(ENGINE_FLAGS - used)} to llama-tts. "
                          "Check LLAMA_MIN_BUILD in setup.sh and the llama.cpp version in the README.")
 
+    def test_web_script_patches_still_match(self):
+        """compat.py edits/rewords studio/web/app.js; if upstream changes those lines the patch silently stops."""
+        sys.path.insert(0, str(HERE))
+        import compat
+        js = (STUDIO / "web" / "app.js").read_text(encoding="utf-8")
+        for old, _ in compat.JS_PATCHES + compat.TEXTS:
+            with self.subTest(old=old[:50]):
+                found = old in js or any(old in f.read_text(encoding="utf-8") for f in STUDIO.glob("*.py"))
+                self.assertTrue(found, f"“{old[:60]}…” is no longer in studio/; update compat.py")
+
     def test_shell_scripts_are_syntactically_valid(self):
         for name in ("build-llama.sh", "build-whisper.sh"):
             with self.subTest(script=name):
@@ -354,6 +364,23 @@ class RuntimeChecks(unittest.TestCase):
         self.assertIs(tray.copy, self.compat._copy)
         item = pystray.MenuItem("Start with Windows", lambda: None)
         self.assertEqual(item.text, "Start at login")
+
+    def test_web_page_has_macos_wording(self):
+        from fastapi.testclient import TestClient
+        from studio import app, config
+        raw = (STUDIO / "web" / "app.js").read_text(encoding="utf-8")
+        served = TestClient(app.create_app(config.load())).get("/app.js")
+        self.assertEqual(served.status_code, 200)
+        for old, new in self.compat.TEXTS:
+            if old in raw:
+                self.assertNotIn(old, served.text, f"“{old}” is still shown")
+                self.assertIn(new, served.text)
+
+    def test_page_script_has_no_download_button_for_system_things(self):
+        js = self._client().get("/app.js").text
+        self.assertIn("t.system_only", js)
+        self.assertIn("else if (!e.size)", js)
+        self.assertNotIn("get ffmpeg on the", js)
 
     def test_wrong_architecture_is_rejected(self):
         self.compat._applied = False

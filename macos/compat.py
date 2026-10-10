@@ -396,6 +396,25 @@ TEXTS = [
     ("Start with Windows", "Start at login"),
     ("Windows notification when a batch finishes", "Desktop notification when a batch finishes"),
     ("Recycle Bin", "Trash"),
+    ("Download it on the Models page (Tools), then try again.",
+     "Install ffmpeg on this PC (brew install ffmpeg), then try again."),
+    ("get ffmpeg on the <a href=\"#models\">Models page</a> (Tools).",
+     "install ffmpeg on this PC (see <a href=\"#models\">Models</a>, Tools)."),
+    ("llama.cpp ${esc(s.engine_release)}, the official build. Pick the one for your graphics card.",
+     "On macOS the app uses the llama-tts installed on this PC (llama.cpp b10270 or newer, with Metal on Apple "
+     "Silicon). There is nothing to download here: install it with Homebrew (brew install llama.cpp), then press "
+     "Check again."),
+]
+
+
+JS_PATCHES = [
+    ("['Windows', a.windows],", "['System', a.windows.replace(/^Windows /, 'macOS ')],"),
+    ("else acts = `<button class=\"btn sm accent\" data-t=\"download\"",
+     "else if (t.system_only) acts = `<span class=\"chip warn\">Not found on this PC</span>`;\n  "
+     "else acts = `<button class=\"btn sm accent\" data-t=\"download\""),
+    ("else acts = `<button class=\"btn sm ${e.recommended ? 'accent' : ''}\" data-e=\"download\"",
+     "else if (!e.size) acts = `<span class=\"chip warn\">Not found on this PC</span>`;\n    "
+     "else acts = `<button class=\"btn sm ${e.recommended ? 'accent' : ''}\" data-e=\"download\""),
 ]
 
 
@@ -403,6 +422,12 @@ def _macos_text(text: str) -> str:
     for old, new in TEXTS:
         text = text.replace(old, new)
     return text
+
+
+def _macos_script(text: str) -> str:
+    for old, new in JS_PATCHES:
+        text = text.replace(old, new)
+    return _macos_text(text)
 
 
 def _notify(message: str, title: str | None = None) -> None:
@@ -428,6 +453,39 @@ def patch_tray() -> None:
     tray.Tray.__init__ = init
 
 
+def _patch_web() -> None:
+    from fastapi import Response
+    from studio import app as studio_app
+
+    create_app = studio_app.create_app
+
+    def create(cfg: dict):
+        app = create_app(cfg)
+
+        @app.middleware("http")
+        async def macos_wording(request, call_next):
+            if request.url.path != "/app.js" and not request.url.path.startswith("/api/"):
+                return await call_next(request)
+            if request.url.path.startswith("/api/"):
+                resp = await call_next(request)
+                if resp.status_code < 400 or "json" not in resp.headers.get("content-type", ""):
+                    return resp
+                body = b"".join([chunk async for chunk in resp.body_iterator])
+                headers = {k: v for k, v in resp.headers.items() if k.lower() != "content-length"}
+                return Response(_macos_text(body.decode("utf-8")), status_code=resp.status_code, headers=headers)
+            request.scope["headers"] = [(k, v) for k, v in request.scope["headers"]
+                                        if k not in (b"if-none-match", b"if-modified-since")]
+            resp = await call_next(request)
+            body = b"".join([chunk async for chunk in resp.body_iterator])
+            skip = {"content-length", "etag", "last-modified"}
+            headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip}
+            return Response(_macos_script(body.decode("utf-8")), status_code=resp.status_code, headers=headers)
+
+        return app
+
+    studio_app.create_app = create
+
+
 # ---- entry ----------------------------------------------------------------------------------------------
 
 def apply() -> None:
@@ -445,4 +503,5 @@ def apply() -> None:
     _patch_updater()
     _patch_engine()
     _link_tools()
+    _patch_web()
     _applied = True
