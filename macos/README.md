@@ -58,9 +58,9 @@ recovery, video/M4A).
 | Smoke test (`test_smoke.py`) | done |
 | Speech synthesis (TTS) | done — Qwen3-TTS Q8 downloaded and spoken on this Mac |
 | Whisper transcription | done — round-tripped a generated sentence through `/api/transcripts`, text and SRT timing both correct |
-| Voice cloning | not yet tested |
-| Pause/resume, `kill -9` recovery | not yet tested |
-| Video/M4A input | not yet tested |
+| Voice cloning | done — confirmed by the user |
+| Pause/resume, `kill -9` recovery | done — pause let the current segment finish, resume continued correctly; `kill -9` on the app killed `llama-tts` within 2s (via `pdeath-wrap.sh`), and the batch picked up and finished on its own after restarting the app |
+| Video/M4A input | done — created voices from both an M4A and an MP4 file via `/api/voices` (real ffmpeg decode), then generated speech with the resulting voice |
 | Tray icon | done — icon appears and Quit stops the app, confirmed in a real interactive Terminal session |
-| Autostart (LaunchAgent) | not yet tested |
+| Autostart (LaunchAgent) | done — toggling via `/api/settings` writes/removes a valid plist (`plutil -lint` OK) at `~/Library/LaunchAgents/de.blarks.fatima-voice-studio.plist`; disabling it does not kill the running app |
 | `--service` (background LaunchAgent) | not yet tested |
