@@ -27,3 +27,6 @@ dist/
 
 # Help website build output (mkdocs build)
 /site/
+
+# superpowers execution scratch (ledgers, briefs, review packages)
+.superpowers/
