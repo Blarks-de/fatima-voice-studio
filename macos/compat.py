@@ -256,6 +256,49 @@ def _patch_hardware() -> None:
     hardware.recommended_engine = lambda hw: SYSTEM_ENGINE
 
 
+def _as_literal(text: str) -> str:
+    """An AppleScript string literal for `text`, safe to splice into an osascript -e argument."""
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _to_trash(path: Path) -> None:
+    path = Path(path).resolve()
+    script = f'tell application "Finder" to delete (POSIX file {_as_literal(str(path))})'
+    p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    if p.returncode != 0:
+        lines = (p.stderr or p.stdout).strip().splitlines()
+        raise OSError("Couldn't move it to the trash" + (f": {lines[-1]}" if lines else "")
+                      + ". The data folder has to be on the same drive as your home folder (see README, FVS_HOME).")
+
+
+def _pick_folder(start: str = "") -> str | None:
+    start_dir = start if start and Path(start).is_dir() else str(Path.home())
+    script = (f'POSIX path of (choose folder with prompt "Choose a folder" '
+             f'default location (POSIX file {_as_literal(start_dir)}))')
+    p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    chosen = p.stdout.strip()
+    return chosen.rstrip("/") if p.returncode == 0 and chosen else None
+
+
+def _startfile(path) -> None:
+    subprocess.Popen(["open", str(path)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def _copy(text: str) -> None:
+    subprocess.run(["pbcopy"], input=text.encode(), check=False)
+
+
+def _patch_misc() -> None:
+    os.startfile = _startfile  # type: ignore[attr-defined]
+    trash = types.ModuleType("studio.trash")
+    trash.to_recycle_bin = _to_trash
+    sys.modules["studio.trash"] = trash
+    winui = types.ModuleType("studio.winui")
+    winui.pick_folder = _pick_folder
+    sys.modules["studio.winui"] = winui
+
+
 # ---- entry ----------------------------------------------------------------------------------------------
 
 def apply() -> None:
@@ -266,6 +309,7 @@ def apply() -> None:
         raise RuntimeError("macos/compat.py is for Apple Silicon Macs only.")
     sys.path.insert(0, str(REPO))
     _patch_config()
+    _patch_misc()
     _patch_tools()
     _patch_hardware()
     _link_tools()
