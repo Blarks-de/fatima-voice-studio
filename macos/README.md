@@ -57,10 +57,10 @@ recovery, video/M4A).
 |---|---|
 | Smoke test (`test_smoke.py`) | done |
 | Speech synthesis (TTS) | done — Qwen3-TTS Q8 downloaded and spoken on this Mac |
+| Whisper transcription | done — round-tripped a generated sentence through `/api/transcripts`, text and SRT timing both correct |
 | Voice cloning | not yet tested |
-| Whisper subtitles/transcripts | not yet tested (whisper-small downloaded, not yet run) |
 | Pause/resume, `kill -9` recovery | not yet tested |
 | Video/M4A input | not yet tested |
-| Tray icon | not yet tested — crashes with SIGTRAP when started from a sandboxed/headless shell (no WindowServer access); needs a real interactive Terminal session |
+| Tray icon | crash fixed (was SIGTRAP from an AppKit call off the main thread, not a sandbox issue — see commit `4009707`); survived 18s with no crash in automated testing, interactive confirmation (does the icon actually appear and respond to clicks) still pending |
 | Autostart (LaunchAgent) | not yet tested |
 | `--service` (background LaunchAgent) | not yet tested |
