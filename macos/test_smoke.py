@@ -151,6 +151,22 @@ class RuntimeChecks(unittest.TestCase):
             else:
                 os.environ["FVS_LLAMA_TTS"] = old
 
+    def test_paths_and_engine(self):
+        home = Path(os.environ["FVS_HOME"])
+        from studio import config as c
+        self.assertEqual(c.ENGINE_EXE, "llama-tts")
+        self.assertEqual(c.WHISPER_EXE, "whisper-cli")
+        self.assertEqual(list(c.ENGINES), ["system"])
+        self.assertEqual(c.DEFAULTS["engine"], "system")
+        self.assertFalse(c.DEFAULTS["check_updates"])
+        self.assertEqual(c.engine_dir({"engine": "system"}), home / "engine" / "system")
+        self.assertEqual(c.DATA, home / "data")
+        self.assertIsInstance(c.installed_engines({"engine": "system"}), list)
+
+    def test_about_page_does_not_show_the_windows_engine_pin(self):
+        from studio import config as c
+        self.assertEqual(c.ENGINE_RELEASE, self.compat.llama_build() or "not found")
+
     def test_wrong_architecture_is_rejected(self):
         self.compat._applied = False
         try:
