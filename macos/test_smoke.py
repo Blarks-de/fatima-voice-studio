@@ -101,6 +101,12 @@ class StaticChecks(unittest.TestCase):
                          f"engine.py no longer passes {sorted(ENGINE_FLAGS - used)} to llama-tts. "
                          "Check LLAMA_MIN_BUILD in setup.sh and the llama.cpp version in the README.")
 
+    def test_shell_scripts_are_syntactically_valid(self):
+        for name in ("build-llama.sh", "build-whisper.sh"):
+            with self.subTest(script=name):
+                r = subprocess.run(["bash", "-n", str(HERE / name)], capture_output=True, text=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+
 
 @unittest.skipUnless(sys.platform == "darwin" and platform.machine() == "arm64", "the compatibility layer is for Apple Silicon Macs")
 class RuntimeChecks(unittest.TestCase):
