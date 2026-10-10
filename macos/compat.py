@@ -456,11 +456,26 @@ def _notify(message: str, title: str | None = None) -> None:
 def patch_tray() -> None:
     """Only needed for --tray (importing studio.tray pulls in pystray)."""
     import pystray
+    import PyObjCTools.AppHelper as AppHelper
     from studio import tray
     tray.copy = _copy
 
     real_item = pystray.MenuItem
     pystray.MenuItem = lambda text, *a, **kw: real_item(_macos_text(text), *a, **kw)
+
+    # studio/tray.py's Tray._watch() background thread calls icon.update_menu()/icon.title=/icon.icon= every
+    # few seconds, and pystray's darwin backend (pystray/_darwin.py) touches AppKit (NSStatusItem/NSMenu)
+    # directly with no thread marshaling of its own. macOS enforces main-thread-only UI calls as a hard
+    # SIGTRAP crash, not a catchable Python exception (confirmed via a real crash report: EXC_BREAKPOINT in
+    # -[NSStatusItem setMenu:], called from the _watch thread). AppHelper.callAfter defers these onto the
+    # main run loop that icon.run() (called from the main thread, see run.py) already owns.
+    for name in ("_show", "_hide", "_update_icon", "_update_title", "_update_menu"):
+        real_method = getattr(pystray.Icon, name)
+
+        def wrapped(self, _real=real_method):
+            AppHelper.callAfter(_real, self)
+
+        setattr(pystray.Icon, name, wrapped)
 
     real_init = tray.Tray.__init__
 

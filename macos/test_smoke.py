@@ -476,6 +476,30 @@ class RuntimeChecks(unittest.TestCase):
         item = pystray.MenuItem("Start with Windows", lambda: None)
         self.assertEqual(item.text, "Start at login")
 
+        # Manual verification: `./fatima-voice-studio` (with --tray) crashed with "zsh: trace trap" right
+        # after the first studio/tray.py Tray._watch() tick, confirmed via the macOS crash report as
+        # EXC_BREAKPOINT/SIGTRAP inside -[NSStatusItem setMenu:], called from a background Python thread
+        # (thread_run/pythread_wrapper, not the main thread). pystray's darwin backend touches AppKit
+        # (NSStatusItem/NSMenu) directly with no thread marshaling of its own, and _watch() calls
+        # icon.update_menu()/icon.title=/icon.icon= every few seconds from its own background thread --
+        # macOS enforces main-thread-only UI calls as a hard crash, not a catchable Python exception.
+        # patch_tray() must route those AppKit-touching methods through AppHelper.callAfter (which defers
+        # them onto the main run loop that icon.run() owns) instead of letting them run inline on whatever
+        # thread calls them.
+        import unittest.mock as mock
+        import PyObjCTools.AppHelper as AppHelper
+        calls = []
+        with mock.patch.object(AppHelper, "callAfter", side_effect=lambda fn, *a: calls.append((fn, a))):
+            dummy = object.__new__(pystray.Icon)
+            pystray.Icon._update_menu(dummy)
+            pystray.Icon._update_title(dummy)
+            pystray.Icon._update_icon(dummy)
+            pystray.Icon._show(dummy)
+            pystray.Icon._hide(dummy)
+        self.assertEqual(len(calls), 5, "these must be deferred via AppHelper.callAfter, not run inline")
+        for fn, args in calls:
+            self.assertEqual(args, (dummy,))
+
     def test_web_page_has_macos_wording(self):
         from fastapi.testclient import TestClient
         from studio import app, config
