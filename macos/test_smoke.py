@@ -382,6 +382,13 @@ class RuntimeChecks(unittest.TestCase):
         self.assertIn("else if (!e.size)", js)
         self.assertNotIn("get ffmpeg on the", js)
 
+    def test_run_py_check_exits_cleanly(self):
+        root = Path(self.tmp.name) / "check-run"
+        env = {**os.environ, "FVS_HOME": str(root / "home"), "FVS_MUSIC_DIR": str(root / "music"),
+              "FVS_LAUNCH_AGENTS_DIR": str(root / "launchagents")}
+        r = subprocess.run([sys.executable, str(HERE / "run.py"), "--check"], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_wrong_architecture_is_rejected(self):
         self.compat._applied = False
         try:
