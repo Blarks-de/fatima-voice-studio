@@ -112,7 +112,7 @@ class StaticChecks(unittest.TestCase):
                 self.assertTrue(found, f"“{old[:60]}…” is no longer in studio/; update compat.py")
 
     def test_shell_scripts_are_syntactically_valid(self):
-        for name in ("build-llama.sh", "build-whisper.sh"):
+        for name in ("build-llama.sh", "build-whisper.sh", "setup.sh", "fatima-voice-studio"):
             with self.subTest(script=name):
                 r = subprocess.run(["bash", "-n", str(HERE / name)], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, r.stderr)
