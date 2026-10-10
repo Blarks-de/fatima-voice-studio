@@ -299,6 +299,79 @@ def _patch_misc() -> None:
     sys.modules["studio.winui"] = winui
 
 
+# ---- autostart and the --service LaunchAgent ------------------------------------------------------------
+
+LAUNCH_AGENT_LABEL = "de.blarks.fatima-voice-studio"
+SERVICE_LABEL = "de.blarks.fatima-voice-studio.service"
+_LAUNCH_AGENTS_DIR = Path(os.environ.get("FVS_LAUNCH_AGENTS_DIR") or Path.home() / "Library" / "LaunchAgents")
+AUTOSTART_FILE = _LAUNCH_AGENTS_DIR / f"{LAUNCH_AGENT_LABEL}.plist"
+SERVICE_FILE = _LAUNCH_AGENTS_DIR / f"{SERVICE_LABEL}.plist"
+
+
+def _plist(label: str, args: list[str], extra: str = "") -> str:
+    items = "\n".join(f"        <string>{a}</string>" for a in args)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+           '<plist version="1.0">\n<dict>\n'
+           f'    <key>Label</key><string>{label}</string>\n'
+           '    <key>ProgramArguments</key>\n    <array>\n'
+           f'{items}\n'
+           '    </array>\n'
+           '    <key>RunAtLoad</key><true/>\n'
+           f'{extra}'
+           '</dict>\n</plist>\n')
+
+
+def _patch_autostart() -> None:
+    from studio import autostart
+    autostart.enabled = lambda: AUTOSTART_FILE.exists()
+
+    def set_enabled(on: bool) -> None:
+        if on:
+            AUTOSTART_FILE.parent.mkdir(parents=True, exist_ok=True)
+            AUTOSTART_FILE.write_text(_plist(LAUNCH_AGENT_LABEL, [sys.executable, str(MACOS_DIR / "run.py"), "--no-browser"]),
+                                      encoding="utf-8")
+            subprocess.run(["launchctl", "load", "-w", str(AUTOSTART_FILE)], capture_output=True)
+        else:
+            subprocess.run(["launchctl", "unload", str(AUTOSTART_FILE)], capture_output=True)
+            AUTOSTART_FILE.unlink(missing_ok=True)
+
+    autostart.set_enabled = set_enabled
+    autostart.python_console = lambda: sys.executable
+    autostart.install_launchers = lambda: None
+
+
+def write_service_plist() -> None:
+    """Installs a LaunchAgent that keeps the app running in the background and restarts it if it crashes
+    (macOS has no systemd; this is the --service counterpart to linux/setup.sh --service). Called from setup.sh."""
+    log = Path.home() / "Library" / "Logs" / "fatima-voice-studio.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    extra = ('    <key>KeepAlive</key><true/>\n'
+            f'    <key>StandardOutPath</key><string>{log}</string>\n'
+            f'    <key>StandardErrorPath</key><string>{log}</string>\n')
+    SERVICE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SERVICE_FILE.write_text(_plist(SERVICE_LABEL, [sys.executable, str(MACOS_DIR / "run.py"), "--no-tray", "--no-browser"], extra),
+                            encoding="utf-8")
+
+
+def _patch_updater() -> None:
+    from studio import updater
+    msg = "Updates aren't offered on macOS. Update with `git pull` in the project folder."
+
+    class MacOSUpdater(updater.Updater):
+        async def watch(self) -> None:
+            return None
+
+        async def check(self) -> dict:
+            self.state.update(status="error", error=msg)
+            return self.state
+
+        def start(self, kind: str) -> None:
+            raise ValueError(msg)
+
+    updater.Updater = MacOSUpdater
+
+
 # ---- entry ----------------------------------------------------------------------------------------------
 
 def apply() -> None:
@@ -312,5 +385,7 @@ def apply() -> None:
     _patch_misc()
     _patch_tools()
     _patch_hardware()
+    _patch_autostart()
+    _patch_updater()
     _link_tools()
     _applied = True

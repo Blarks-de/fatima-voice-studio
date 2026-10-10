@@ -280,6 +280,41 @@ class RuntimeChecks(unittest.TestCase):
         with self.assertRaises(OSError):
             self.compat._to_trash(missing)
 
+    def test_autostart(self):
+        file = self.compat.AUTOSTART_FILE
+        if not str(file).startswith(self.tmp.name):
+            self.skipTest("compat was imported before the test set FVS_LAUNCH_AGENTS_DIR; not touching the real one")
+        import unittest.mock as mock
+        from studio import autostart as a
+        self.assertFalse(a.enabled())
+        with mock.patch("subprocess.run") as run:
+            a.set_enabled(True)
+            self.assertEqual(run.call_args.args[0][:2], ["launchctl", "load"])
+        self.assertTrue(a.enabled())
+        self.assertIn(self.compat.LAUNCH_AGENT_LABEL, file.read_text(encoding="utf-8"))
+        with mock.patch("subprocess.run") as run:
+            a.set_enabled(False)
+            self.assertEqual(run.call_args.args[0][:2], ["launchctl", "unload"])
+        self.assertFalse(a.enabled())
+
+    def test_service_plist_has_keepalive(self):
+        if not str(self.compat.SERVICE_FILE).startswith(self.tmp.name):
+            self.skipTest("compat was imported before the test set FVS_LAUNCH_AGENTS_DIR; not touching the real one")
+        self.compat.write_service_plist()
+        self.addCleanup(self.compat.SERVICE_FILE.unlink, missing_ok=True)
+        xml = self.compat.SERVICE_FILE.read_text(encoding="utf-8")
+        self.assertIn(self.compat.SERVICE_LABEL, xml)
+        self.assertIn("<key>KeepAlive</key><true/>", xml)
+        self.assertIn("--no-tray", xml)
+
+    def test_updater_says_no(self):
+        import asyncio
+        from studio import app, config
+        state = asyncio.run(app.Updater(config.load()).check())
+        self.assertEqual(state["status"], "error")
+        self.assertIn("git pull", state["error"])
+        self.assertEqual(app.Updater.__name__, "MacOSUpdater", "app.py still has the Windows updater")
+
     def test_wrong_architecture_is_rejected(self):
         self.compat._applied = False
         try:
