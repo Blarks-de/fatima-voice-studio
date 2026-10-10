@@ -263,6 +263,23 @@ class RuntimeChecks(unittest.TestCase):
         # this Mac has 32 GB unified memory; qwen3-tts-q8 must fit without falling back to Q4/CPU
         self.assertEqual(h.model_fit("qwen3-tts-q8", hw, "system"), "fits")
 
+    def test_applescript_literal_escaping(self):
+        c = self.compat
+        self.assertEqual(c._as_literal("simple"), '"simple"')
+        self.assertEqual(c._as_literal('has "quotes"'), '"has \\"quotes\\""')
+        self.assertEqual(c._as_literal("back\\slash"), '"back\\\\slash"')
+
+    def test_patched_names_are_the_ones_in_use(self):
+        from studio import store, voices, transcribe, app
+        for mod in (store, voices, transcribe):
+            self.assertIs(mod.to_recycle_bin, self.compat._to_trash, f"{mod.__name__} still has the Windows trash")
+        self.assertIs(app.pick_folder, self.compat._pick_folder)
+
+    def test_trash_reports_a_clear_error_for_a_missing_file(self):
+        missing = Path(self.tmp.name) / "does-not-exist"
+        with self.assertRaises(OSError):
+            self.compat._to_trash(missing)
+
     def test_wrong_architecture_is_rejected(self):
         self.compat._applied = False
         try:
