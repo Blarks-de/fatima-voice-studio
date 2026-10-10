@@ -61,6 +61,6 @@ recovery, video/M4A).
 | Voice cloning | not yet tested |
 | Pause/resume, `kill -9` recovery | not yet tested |
 | Video/M4A input | not yet tested |
-| Tray icon | crash fixed (was SIGTRAP from an AppKit call off the main thread, not a sandbox issue — see commit `4009707`); survived 18s with no crash in automated testing, interactive confirmation (does the icon actually appear and respond to clicks) still pending |
+| Tray icon | done — icon appears and Quit stops the app, confirmed in a real interactive Terminal session |
 | Autostart (LaunchAgent) | not yet tested |
 | `--service` (background LaunchAgent) | not yet tested |
