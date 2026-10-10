@@ -386,6 +386,48 @@ def _patch_engine() -> None:
     engine.subprocess = types.SimpleNamespace(**{**vars(subprocess), "Popen": Popen})
 
 
+# ---- wording ----------------------------------------------------------------------------------------------
+
+# The web page is upstream's and mentions Windows in a few visible texts; the tray menu does too. Both are
+# rewritten on the way out, so studio/web/ and studio/tray.py stay untouched. _patch_web (next task) appends
+# the web-only entries to this same list.
+TEXTS = [
+    ("Start with Windows (in the tray)", "Start at login (in the tray)"),
+    ("Start with Windows", "Start at login"),
+    ("Windows notification when a batch finishes", "Desktop notification when a batch finishes"),
+    ("Recycle Bin", "Trash"),
+]
+
+
+def _macos_text(text: str) -> str:
+    for old, new in TEXTS:
+        text = text.replace(old, new)
+    return text
+
+
+def _notify(message: str, title: str | None = None) -> None:
+    script = f'display notification {_as_literal(message)} with title {_as_literal(title or "Fatima Voice Studio")}'
+    subprocess.run(["osascript", "-e", script], capture_output=True)
+
+
+def patch_tray() -> None:
+    """Only needed for --tray (importing studio.tray pulls in pystray)."""
+    import pystray
+    from studio import tray
+    tray.copy = _copy
+
+    real_item = pystray.MenuItem
+    pystray.MenuItem = lambda text, *a, **kw: real_item(_macos_text(text), *a, **kw)
+
+    real_init = tray.Tray.__init__
+
+    def init(self, *a, **kw):
+        real_init(self, *a, **kw)
+        self.icon.notify = _notify  # type: ignore[method-assign]
+
+    tray.Tray.__init__ = init
+
+
 # ---- entry ----------------------------------------------------------------------------------------------
 
 def apply() -> None:

@@ -344,6 +344,17 @@ class RuntimeChecks(unittest.TestCase):
             if proc.poll() is None:
                 proc.kill()
 
+    def test_tray_patch(self):
+        try:
+            import pystray  # noqa: F401  (needs pyobjc-framework-Cocoa to import on macOS)
+        except Exception as e:
+            self.skipTest(f"no tray backend here: {type(e).__name__}")
+        from studio import tray
+        self.compat.patch_tray()
+        self.assertIs(tray.copy, self.compat._copy)
+        item = pystray.MenuItem("Start with Windows", lambda: None)
+        self.assertEqual(item.text, "Start at login")
+
     def test_wrong_architecture_is_rejected(self):
         self.compat._applied = False
         try:
