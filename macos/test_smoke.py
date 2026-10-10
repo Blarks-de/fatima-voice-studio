@@ -107,6 +107,10 @@ class StaticChecks(unittest.TestCase):
                 r = subprocess.run(["bash", "-n", str(HERE / name)], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_pdeath_wrap_is_syntactically_valid(self):
+        r = subprocess.run(["bash", "-n", str(HERE / "pdeath-wrap.sh")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
 
 @unittest.skipUnless(sys.platform == "darwin" and platform.machine() == "arm64", "the compatibility layer is for Apple Silicon Macs")
 class RuntimeChecks(unittest.TestCase):
@@ -123,6 +127,8 @@ class RuntimeChecks(unittest.TestCase):
         import compat
         compat.apply()
         cls.compat = compat
+        from studio import engine
+        cls.engine = engine
 
     def test_apply_twice_is_harmless(self):
         self.compat.apply()
@@ -314,6 +320,29 @@ class RuntimeChecks(unittest.TestCase):
         self.assertEqual(state["status"], "error")
         self.assertIn("git pull", state["error"])
         self.assertEqual(app.Updater.__name__, "MacOSUpdater", "app.py still has the Windows updater")
+
+    def test_engine_is_tied_to_the_app(self):
+        self.assertIsNot(self.engine.subprocess.Popen, subprocess.Popen)
+        p = self.engine.subprocess.Popen([sys.executable, "-c", "print('ok')"], stdout=subprocess.PIPE)
+        self.assertEqual(p.communicate(timeout=30)[0].strip(), b"ok")
+        self.assertEqual(p.returncode, 0)
+
+    def test_engine_dies_with_a_fake_parent(self):
+        parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        proc = subprocess.Popen([str(self.compat.PDEATH_WRAP), "sleep", "30"],
+                                env={**os.environ, "FVS_WATCH_PPID": str(parent.pid)})
+        try:
+            time.sleep(0.2)
+            self.assertIsNone(proc.poll(), "the wrapped process should still be running")
+            parent.kill()
+            parent.wait(timeout=5)
+            proc.wait(timeout=5)
+            self.assertIsNotNone(proc.returncode, "sleep 30 should have been killed along with the fake parent")
+        finally:
+            if parent.poll() is None:
+                parent.kill()
+            if proc.poll() is None:
+                proc.kill()
 
     def test_wrong_architecture_is_rejected(self):
         self.compat._applied = False
