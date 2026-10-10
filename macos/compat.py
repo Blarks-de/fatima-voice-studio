@@ -372,6 +372,20 @@ def _patch_updater() -> None:
     updater.Updater = MacOSUpdater
 
 
+def _patch_engine() -> None:
+    """Windows ties llama-tts to the app with a job object; setpriv does it on Linux. Here pdeath-wrap.sh polls
+    this process's pid and kills the child once it's gone."""
+    from studio import engine
+
+    class Popen(subprocess.Popen):
+        def __init__(self, args, *a, env=None, **kw):
+            env = dict(env if env is not None else os.environ)
+            env["FVS_WATCH_PPID"] = str(os.getpid())
+            super().__init__([str(PDEATH_WRAP), *args], *a, env=env, **kw)
+
+    engine.subprocess = types.SimpleNamespace(**{**vars(subprocess), "Popen": Popen})
+
+
 # ---- entry ----------------------------------------------------------------------------------------------
 
 def apply() -> None:
@@ -387,5 +401,6 @@ def apply() -> None:
     _patch_hardware()
     _patch_autostart()
     _patch_updater()
+    _patch_engine()
     _link_tools()
     _applied = True
