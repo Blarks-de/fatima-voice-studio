@@ -47,11 +47,9 @@ Same overrides as `linux/`, plus two macOS-specific ones used for testing:
 
 ## Tested status
 
-Not yet tested beyond the automated smoke test (`macos/test_smoke.py`). This table follows the same convention
-as `linux/README.md` — updated only with actually tested results, not in advance. See
-`docs/superpowers/specs/2026-10-10-macos-port-design.md` for the manual verification checklist still to run on
-this Mac (TTS, Whisper batch, voice cloning, tray, LaunchAgent autostart, `--service`, Pause/Resume, `kill -9`
-recovery, video/M4A).
+All items from the manual verification checklist in
+`docs/superpowers/specs/2026-10-10-macos-port-design.md` have been run on this Mac (Apple M6, macOS 27.0.1).
+This table follows the same convention as `linux/README.md` — updated only with actually tested results.
 
 | Area | Status |
 |---|---|
@@ -63,4 +61,4 @@ recovery, video/M4A).
 | Video/M4A input | done — created voices from both an M4A and an MP4 file via `/api/voices` (real ffmpeg decode), then generated speech with the resulting voice |
 | Tray icon | done — icon appears and Quit stops the app, confirmed in a real interactive Terminal session |
 | Autostart (LaunchAgent) | done — toggling via `/api/settings` writes/removes a valid plist (`plutil -lint` OK) at `~/Library/LaunchAgents/de.blarks.fatima-voice-studio.plist`; disabling it does not kill the running app |
-| `--service` (background LaunchAgent) | not yet tested |
+| `--service` (background LaunchAgent) | done — `./setup.sh --service` installs and starts it; `kill -9` on the service process is auto-restarted by launchd within 1s; running it again while the app was already up (manually) exits cleanly with code 0 and is *not* restarted in a loop (confirmed over 20s) — the I3 fix |
