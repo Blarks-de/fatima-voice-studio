@@ -45,6 +45,6 @@ flowchart TD
 
 ## Why no shared core with `linux/`
 
-See `docs/superpowers/specs/2026-10-10-macos-port-design.md` — the two platforms turned out different enough
-(`osascript` vs. `gio`/`zenity`, PyObjC vs. AppIndicator, `launchd` vs. `systemd`) that a shared abstraction
-would have been premature. If that changes, extracting a shared core is a deliberate, separate step.
+The two platforms turned out different enough (`osascript` vs. `gio`/`zenity`, PyObjC vs. AppIndicator,
+`launchd` vs. `systemd`) that a shared abstraction would have been premature. If that changes, extracting a
+shared core is a deliberate, separate step.

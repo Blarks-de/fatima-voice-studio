@@ -30,9 +30,9 @@ cd macos
 ./fatima-voice-studio --stop       # stop a running instance
 ```
 
-"Start at login" in the tray menu installs a separate LaunchAgent (`~/Library/LaunchAgents/de.blarks.fatima-voice-studio.plist`).
+"Start at login" in the tray menu installs a separate LaunchAgent (`~/Library/LaunchAgents/io.github.hassanxs.fatima-voice-studio.plist`).
 `./setup.sh --service` installs another one with `KeepAlive`
-(`~/Library/LaunchAgents/de.blarks.fatima-voice-studio.service.plist`), for running in the background
+(`~/Library/LaunchAgents/io.github.hassanxs.fatima-voice-studio.service.plist`), for running in the background
 independent of login.
 
 ## Environment variables
@@ -47,8 +47,7 @@ Same overrides as `linux/`, plus two macOS-specific ones used for testing:
 
 ## Tested status
 
-All items from the manual verification checklist in
-`docs/superpowers/specs/2026-10-10-macos-port-design.md` have been run on this Mac (Apple M6, macOS 27.0.1).
+All items from this port's manual verification checklist have been run on this Mac (Apple M6, macOS 27.0.1).
 This table follows the same convention as `linux/README.md` — updated only with actually tested results.
 
 | Area | Status |
@@ -56,9 +55,9 @@ This table follows the same convention as `linux/README.md` — updated only wit
 | Smoke test (`test_smoke.py`) | done |
 | Speech synthesis (TTS) | done — Qwen3-TTS Q8 downloaded and spoken on this Mac |
 | Whisper transcription | done — round-tripped a generated sentence through `/api/transcripts`, text and SRT timing both correct |
-| Voice cloning | done — confirmed by the user |
+| Voice cloning | done — tested on this Mac |
 | Pause/resume, `kill -9` recovery | done — pause let the current segment finish, resume continued correctly; `kill -9` on the app killed `llama-tts` within 2s (via `pdeath-wrap.sh`), and the batch picked up and finished on its own after restarting the app |
 | Video/M4A input | done — created voices from both an M4A and an MP4 file via `/api/voices` (real ffmpeg decode), then generated speech with the resulting voice |
 | Tray icon | done — icon appears and Quit stops the app, confirmed in a real interactive Terminal session |
-| Autostart (LaunchAgent) | done — toggling via `/api/settings` writes/removes a valid plist (`plutil -lint` OK) at `~/Library/LaunchAgents/de.blarks.fatima-voice-studio.plist`; disabling it does not kill the running app |
-| `--service` (background LaunchAgent) | done — `./setup.sh --service` installs and starts it; `kill -9` on the service process is auto-restarted by launchd within 1s; running it again while the app was already up (manually) exits cleanly with code 0 and is *not* restarted in a loop (confirmed over 20s) — the I3 fix |
+| Autostart (LaunchAgent) | done — toggling via `/api/settings` writes/removes a valid plist (`plutil -lint` OK) at `~/Library/LaunchAgents/io.github.hassanxs.fatima-voice-studio.plist`; disabling it does not kill the running app |
+| `--service` (background LaunchAgent) | done — `./setup.sh --service` installs and starts it; `kill -9` on the service process is auto-restarted by launchd within 1s; running it again while the app was already up (manually) exits cleanly with code 0 and is *not* restarted in a loop (confirmed over 20s) |

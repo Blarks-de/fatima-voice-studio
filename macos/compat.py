@@ -2,8 +2,9 @@
 
 The upstream app is Windows-only (registry, ctypes.windll, PowerShell, Recycle Bin, job objects, .exe engines).
 Instead of editing studio/, this module is applied *before* studio is imported and replaces exactly those parts.
-Call `apply()` first, then import/run `studio` as usual (see run.py). Mirrors linux/compat.py; see
-docs/superpowers/specs/2026-10-10-macos-port-design.md for why this stays a separate module instead of a shared core.
+Call `apply()` first, then import/run `studio` as usual (see run.py). Mirrors linux/compat.py, but stays a
+separate module rather than sharing a core with it: the two platforms differ enough in mechanism (osascript
+vs. gio/zenity, PyObjC vs. AppIndicator, launchd vs. systemd) that a shared abstraction would be premature.
 
 What it does:
   * paths      user data lives in $FVS_HOME (default ~/Library/Application Support/Fatima Voice Studio),
@@ -49,7 +50,7 @@ _HOMEBREW_BIN_DIRS = ["/opt/homebrew/bin", "/usr/local/bin"]
 
 def _which(name: str) -> str | None:
     """shutil.which(), falling back to the common Homebrew locations. launchd starts LaunchAgents (autostart,
-    --service) with a minimal PATH that doesn't include Homebrew, so PATH alone isn't enough (final review C1)."""
+    --service) with a minimal PATH that doesn't include Homebrew, so PATH alone isn't enough."""
     import shutil
     found = shutil.which(name)
     if found:
@@ -279,7 +280,7 @@ def _as_literal(text: str) -> str:
 
 def _to_trash(path: Path) -> None:
     # .absolute() does not follow symlinks (unlike .resolve()): trashing a symlink must trash the symlink
-    # itself, not whatever it points at (final review I8c).
+    # itself, not whatever it points at.
     path = Path(path).absolute()
     script = f'tell application "Finder" to delete (POSIX file {_as_literal(str(path))})'
     p = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
@@ -287,7 +288,7 @@ def _to_trash(path: Path) -> None:
         lines = (p.stderr or p.stdout).strip().splitlines()
         # The most common real-world cause here is macOS not yet having granted this app permission to
         # control Finder (System Settings > Privacy & Security > Automation) -- not a cross-volume limitation
-        # the way linux/'s gio-based trash has (final review I8a).
+        # the way linux/'s gio-based trash has.
         raise OSError("Couldn't move it to the trash" + (f": {lines[-1]}" if lines else "")
                       + ". If this is the first time, macOS may be asking for permission for this app to "
                         "control Finder (System Settings > Privacy & Security > Automation) -- allow it and try again.")
@@ -323,8 +324,8 @@ def _patch_misc() -> None:
 
 # ---- autostart and the --service LaunchAgent ------------------------------------------------------------
 
-LAUNCH_AGENT_LABEL = "de.blarks.fatima-voice-studio"
-SERVICE_LABEL = "de.blarks.fatima-voice-studio.service"
+LAUNCH_AGENT_LABEL = "io.github.hassanxs.fatima-voice-studio"
+SERVICE_LABEL = "io.github.hassanxs.fatima-voice-studio.service"
 _LAUNCH_AGENTS_DIR = Path(os.environ.get("FVS_LAUNCH_AGENTS_DIR") or Path.home() / "Library" / "LaunchAgents")
 AUTOSTART_FILE = _LAUNCH_AGENTS_DIR / f"{LAUNCH_AGENT_LABEL}.plist"
 SERVICE_FILE = _LAUNCH_AGENTS_DIR / f"{SERVICE_LABEL}.plist"
@@ -332,7 +333,7 @@ SERVICE_FILE = _LAUNCH_AGENTS_DIR / f"{SERVICE_LABEL}.plist"
 
 def _plist(label: str, args: list[str], extra: dict | None = None) -> bytes:
     """A LaunchAgent plist as bytes, built with plistlib so values with &, < or other XML-special characters
-    (e.g. a checkout path) come out correctly escaped instead of producing an invalid plist (final review I5)."""
+    (e.g. a checkout path) come out correctly escaped instead of producing an invalid plist."""
     data = {"Label": label, "ProgramArguments": args, "RunAtLoad": True}
     if extra:
         data.update(extra)
@@ -347,7 +348,7 @@ def _patch_autostart() -> None:
         # Only write or delete the plist: launchd reads ~/Library/LaunchAgents by itself at the next login,
         # the same way linux/'s autostart .desktop file only needs to exist or not. Calling `launchctl load`/
         # `unload` here would start a second instance immediately (RunAtLoad) or SIGTERM the running app if it
-        # was started by this very LaunchAgent (final review I1).
+        # was started by this very LaunchAgent.
         if on:
             AUTOSTART_FILE.parent.mkdir(parents=True, exist_ok=True)
             AUTOSTART_FILE.write_bytes(_plist(LAUNCH_AGENT_LABEL, [str(MACOS_DIR / "fatima-voice-studio"), "--no-browser"]))
@@ -364,7 +365,7 @@ def write_service_plist() -> None:
     (macOS has no systemd; this is the --service counterpart to linux/setup.sh --service). Called from setup.sh.
     KeepAlive only restarts on a crash, not a clean exit: __main__.already_running() makes a second instance
     (e.g. the service starting while the app is already running some other way) exit 0, and a plain
-    KeepAlive=true would make launchd relaunch it forever in that case (final review I3)."""
+    KeepAlive=true would make launchd relaunch it forever in that case."""
     log = Path.home() / "Library" / "Logs" / "fatima-voice-studio.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     extra = {"KeepAlive": {"SuccessfulExit": False}, "StandardOutPath": str(log), "StandardErrorPath": str(log)}

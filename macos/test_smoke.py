@@ -118,15 +118,15 @@ class StaticChecks(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_setup_sh_check_step_does_not_swallow_a_failure(self):
-        """Final review I7: `cmd && ok ...` does not trip `set -e` when cmd fails (only a bare `cmd` on its own
-        line does), so the old setup.sh printed 'ok' for every later step and exited 0 even if the app failed
-        to import (e.g. an Intel Mac hitting the Apple-Silicon-only guard)."""
+        """`cmd && ok ...` does not trip `set -e` when cmd fails (only a bare `cmd` on its own line does), so
+        setup.sh must check the exit code explicitly -- otherwise it would print 'ok' for every later step and
+        exit 0 even if the app failed to import (e.g. an Intel Mac hitting the Apple-Silicon-only guard)."""
         script = (HERE / "setup.sh").read_text(encoding="utf-8")
         line = next(l for l in script.splitlines() if "run.py --check" in l)
         self.assertNotIn("&&", line, f"'{line}' must check the exit code explicitly, not rely on && after it")
 
     def test_setup_sh_service_can_be_rerun(self):
-        """Final review I4: `launchctl load` on a job that's already loaded fails on current macOS, and
+        """`launchctl load` on a job that's already loaded fails on current macOS, and
         set -e then aborts the script before anything else in the --service block runs. A previous job must be
         removed first so running `./setup.sh --service` again (e.g. after a code update) doesn't just fail."""
         script = (HERE / "setup.sh").read_text(encoding="utf-8")
@@ -167,7 +167,7 @@ class RuntimeChecks(unittest.TestCase):
         self.assertEqual(self.compat.music_dir(), root / "music" / "Fatima Voice Studio")
 
     def test_find_tool_falls_back_to_homebrew_paths_when_path_is_minimal(self):
-        """launchd starts LaunchAgents with a minimal PATH that doesn't include Homebrew (final review C1)."""
+        """launchd starts LaunchAgents with a minimal PATH that doesn't include Homebrew."""
         old_path = os.environ["PATH"]
         os.environ["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
         try:
@@ -245,7 +245,7 @@ class RuntimeChecks(unittest.TestCase):
                 self.compat._HOMEBREW_BIN_DIRS = old_homebrew_dirs
 
     def test_ffmpeg_also_falls_back_to_homebrew_when_path_is_minimal(self):
-        """Same as find_tool's Homebrew fallback (final review C1), but for the ffmpeg lookup in _patch_tools."""
+        """Same as find_tool's Homebrew fallback, but for the ffmpeg lookup in _patch_tools."""
         from studio import media
         old_path = os.environ["PATH"]
         os.environ["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -338,14 +338,14 @@ class RuntimeChecks(unittest.TestCase):
         missing = Path(self.tmp.name) / "does-not-exist"
         with self.assertRaises(OSError) as cm:
             self.compat._to_trash(missing)
-        # final review I8(a): the old text ("has to be on the same drive as your home folder") was copied from
-        # linux/'s gio limitation and is wrong here -- Finder can trash across volumes. The real macOS failure
-        # mode is the Automation/TCC permission for controlling Finder.
+        # The old text ("has to be on the same drive as your home folder") was copied from linux/'s gio
+        # limitation and is wrong here -- Finder can trash across volumes. The real macOS failure mode is
+        # the Automation/TCC permission for controlling Finder.
         self.assertNotIn("same drive", str(cm.exception))
 
     def test_trash_does_not_resolve_a_symlink_to_its_target(self):
-        """Final review I8(c): Path.resolve() follows symlinks, so trashing a symlink used to trash whatever
-        it pointed at instead of the symlink itself."""
+        """Path.resolve() follows symlinks, so trashing a symlink used to trash whatever it pointed at
+        instead of the symlink itself."""
         import unittest.mock as mock
         target = Path(self.tmp.name) / "target-file"
         target.write_text("x")
@@ -361,7 +361,7 @@ class RuntimeChecks(unittest.TestCase):
         self.assertNotIn(str(target), script)
 
     def test_autostart(self):
-        """Final review I1: toggling must not load/unload a live launchd job -- unload sends SIGTERM to a
+        """Toggling must not load/unload a live launchd job -- unload sends SIGTERM to a
         running job, so disabling autostart would kill the app if it had been started by this LaunchAgent, and
         load -w with RunAtLoad starts a second instance immediately. launchd reads ~/Library/LaunchAgents at
         the next login by itself; only the plist file needs to exist or not (same as linux/'s .desktop file)."""
@@ -386,7 +386,7 @@ class RuntimeChecks(unittest.TestCase):
         self.assertFalse(a.enabled())
 
     def test_service_plist_has_keepalive(self):
-        """Final review I3: KeepAlive must only restart the service on a crash, not on a clean exit -- a plain
+        """KeepAlive must only restart the service on a crash, not on a clean exit -- a plain
         <true/> makes launchd restart it forever if something else (a manual launch, or autostart) already has
         the app running, since __main__.already_running() makes the service exit 0 and launchd relaunches it
         every few seconds."""
@@ -402,8 +402,8 @@ class RuntimeChecks(unittest.TestCase):
         self.assertIn("--no-tray", data["ProgramArguments"])
 
     def test_plist_escapes_xml_special_characters(self):
-        """Final review I5: the old hand-built XML broke (invalid plist, silently ignored by launchd) on any
-        value containing & or < -- e.g. a checkout path like ~/Projects/R&D/fatima-voice-studio."""
+        """The old hand-built XML broke (invalid plist, silently ignored by launchd) on any value containing
+        & or < -- e.g. a checkout path like ~/Projects/R&D/fatima-voice-studio."""
         import plistlib
         xml = self.compat._plist("test.label", ["/bin/x", "a & b < c"])
         data = plistlib.loads(xml)
@@ -443,10 +443,10 @@ class RuntimeChecks(unittest.TestCase):
                 proc.kill()
 
     def test_pdeath_watcher_does_not_outlive_the_wrapped_process(self):
-        """Final review C2: the watcher used to only stop polling once the *app* (fake parent here) died, so a
-        quick command (engine.py starts llama-tts once per ~40s segment) left its watcher running for the rest
-        of the app's lifetime -- hundreds of them on a long batch -- and each one would later send kill -9 to a
-        pid that, by then, could have been reused by an unrelated process."""
+        """The watcher used to only stop polling once the *app* (fake parent here) died, so a quick command
+        (engine.py starts llama-tts once per ~40s segment) left its watcher running for the rest of the app's
+        lifetime -- hundreds of them on a long batch -- and each one would later send kill -9 to a pid that,
+        by then, could have been reused by an unrelated process."""
         parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(20)"])
         try:
             proc = subprocess.Popen([str(self.compat.PDEATH_WRAP), "true"],

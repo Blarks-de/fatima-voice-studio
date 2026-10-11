@@ -69,8 +69,8 @@ if [ "$service" = 1 ]; then
   .venv/bin/python -c 'import sys; sys.path.insert(0, "."); import compat; compat.write_service_plist()'
   # unload any previous version of the job first: `launchctl load` on one that's already loaded fails on
   # current macOS, which would otherwise make a second ./setup.sh --service (e.g. after a code update) abort.
-  launchctl unload ~/Library/LaunchAgents/de.blarks.fatima-voice-studio.service.plist 2>/dev/null || true
-  launchctl load -w ~/Library/LaunchAgents/de.blarks.fatima-voice-studio.service.plist
+  launchctl unload ~/Library/LaunchAgents/io.github.hassanxs.fatima-voice-studio.service.plist 2>/dev/null || true
+  launchctl load -w ~/Library/LaunchAgents/io.github.hassanxs.fatima-voice-studio.service.plist
   ok "LaunchAgent service installed (log: ~/Library/Logs/fatima-voice-studio.log)"
 fi
 
