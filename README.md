@@ -1,15 +1,18 @@
 # Fatima Voice Studio
 
-[![Latest release](https://img.shields.io/github/v/release/hassanxs/fatima-voice-studio?label=release&color=3f4ae0)](https://github.com/hassanxs/fatima-voice-studio/releases/latest) [![Build](https://img.shields.io/github/actions/workflow/status/hassanxs/fatima-voice-studio/release.yml?label=build)](https://github.com/hassanxs/fatima-voice-studio/actions/workflows/release.yml) [![Downloads](https://img.shields.io/github/downloads/hassanxs/fatima-voice-studio/total?color=d9f45c&labelColor=20221e)](https://github.com/hassanxs/fatima-voice-studio/releases) [![License: MIT](https://img.shields.io/github/license/hassanxs/fatima-voice-studio?color=20221e&cacheSeconds=3600)](LICENSE) ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6) ![GPU](https://img.shields.io/badge/GPU-NVIDIA%20%7C%20AMD%20%7C%20Intel%20%7C%20CPU-555)
+[![Latest release](https://img.shields.io/github/v/release/hassanxs/fatima-voice-studio?label=release&color=3f4ae0)](https://github.com/hassanxs/fatima-voice-studio/releases/latest) [![Build](https://img.shields.io/github/actions/workflow/status/hassanxs/fatima-voice-studio/release.yml?label=build)](https://github.com/hassanxs/fatima-voice-studio/actions/workflows/release.yml) [![Downloads](https://img.shields.io/github/downloads/hassanxs/fatima-voice-studio/total?color=d9f45c&labelColor=20221e)](https://github.com/hassanxs/fatima-voice-studio/releases) [![License: MIT](https://img.shields.io/github/license/hassanxs/fatima-voice-studio?color=20221e&cacheSeconds=3600)](LICENSE) ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6) ![Linux and macOS: community-supported](https://img.shields.io/badge/Linux%20%7C%20macOS-community-555) ![GPU](https://img.shields.io/badge/GPU-NVIDIA%20%7C%20AMD%20%7C%20Intel%20%7C%20CPU-555)
 
 ![Fatima Voice Studio: voiceovers and voice cloning on your own Windows PC](docs/social-preview.png)
 
-Voiceovers and voice cloning on your own Windows PC: paste a script (or fifty), pick a voice from your library,
+Voiceovers and voice cloning on your own PC: paste a script (or fifty), pick a voice from your library,
 and get each one back as WAV and MP3 at YouTube loudness, with SRT subtitles, in its own named, renamable folder.
 It runs [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) locally through the official
 [llama.cpp](https://github.com/ggml-org/llama.cpp) engine: no cloud, no account, no per-minute cost, and the
 voice model is free for commercial use. It also works as an OpenAI-compatible speech API and as an MCP server
 for AI agents (Claude Code, Codex, Antigravity, Hermes…).
+
+Made for Windows 10 and 11, with an installer. Linux and Apple Silicon Macs are community-supported: they run
+from the source code, see [Linux and macOS](#linux-and-macos).
 
 On a laptop RTX 5060 (8 GB) it speaks about **2.2× faster than real time**: a 10-minute voiceover takes about
 5 minutes, subtitles included. It also runs on AMD and Intel graphics cards (Vulkan) and, more slowly, on the CPU.
@@ -55,7 +58,7 @@ settings; your voice library and your audio are always kept.
 
 **System requirements:** Windows 10 or 11 (64-bit). Best on an NVIDIA GeForce RTX card with 4 GB or more; AMD
 and Intel cards work through Vulkan, and CPU-only works at about 0.7× real time. 8 GB of RAM and 4 GB of free
-disk.
+disk. On Linux or a Mac, see [Linux and macOS](#linux-and-macos).
 
 ## Start
 
@@ -79,6 +82,35 @@ python -m studio
 `python -m studio` runs it in a console window with the log visible. `pythonw -m studio --tray` runs it as the
 tray app, and `python -m studio --install` adds a Start menu entry and a launcher in the folder. Run from source,
 everything (settings, models, engine, voices, batches) stays inside the project folder.
+
+## Linux and macOS
+
+Fatima Voice Studio also runs on Linux and on Apple Silicon Macs (M1 and newer). Both are **community-supported**,
+contributed by [@Blarks-de](https://github.com/Blarks-de): there's no installer, and they're tested by the community
+rather than for each release. Problems and fixes are welcome as
+[issues](https://github.com/hassanxs/fatima-voice-studio/issues) and pull requests.
+
+Both run from the source code, through a small add-on folder that changes nothing in the app itself:
+
+```bash
+git clone https://github.com/hassanxs/fatima-voice-studio
+cd fatima-voice-studio/linux    # or: cd fatima-voice-studio/macos
+./setup.sh
+./fatima-voice-studio
+```
+
+The app is the same; a few things work differently:
+
+- **Speech engine:** the app uses the `llama-tts` you install yourself (llama.cpp build b10270 or newer) instead of
+  downloading one. On Linux that's your distribution's llama.cpp package for your graphics card (CUDA or Vulkan);
+  on a Mac it's Homebrew's `llama.cpp`, which runs on the Mac's graphics (Metal).
+- **Subtitles and transcripts** need `whisper-cli`: on Linux `./build-whisper.sh` builds it, on a Mac
+  `brew install whisper-cpp`. **ffmpeg** comes from your package manager or Homebrew too.
+- **Updates:** no automatic updates; update with `git pull` in the project folder.
+- **Start at login:** a systemd user service on Linux, a LaunchAgent on a Mac (`./setup.sh --service`).
+
+Requirements, setup steps, troubleshooting and what has been tested: [`linux/README.md`](linux/README.md) and
+[`macos/README.md`](macos/README.md). Intel Macs aren't supported.
 
 ## Help and guides
 
