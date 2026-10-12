@@ -160,7 +160,7 @@ jobs:
           @"
           This model is licensed under the Fish Audio Research License, Copyright © 39 AI, INC. All Rights Reserved.
 
-          Built with Fish Audio. This is s2.cpp ($(git rev-parse HEAD), https://github.com/rodrigomatta/s2.cpp), changed for
+          Built with Fish Audio. This is s2.cpp (${{ inputs.ref }}, https://github.com/rodrigomatta/s2.cpp), changed for
           Fatima Voice Studio: pull requests ${{ inputs.prs }} merged; packaging/s2cpp/seed.patch (a --seed option and a
           "seed" server parameter for repeatable takes); (std::max) in src/main.cpp; <cuda/iterator> in ggml's top-k.cu.
           Backend: ${{ matrix.backend }}.
