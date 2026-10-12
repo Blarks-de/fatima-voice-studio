@@ -48,7 +48,7 @@ jobs:
         run: |
           $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
           $sha = (Get-Content "$($exe.FullName).sha256").Split(" ")[0]
-          # This version's lines from CHANGELOG.md (the app shows the same list in Settings → Updates)
+          # This version's lines from CHANGELOG.md (the app shows the same list on the About page)
           $v = "${{ github.ref_name }}".TrimStart("v")
           $new = ""; $in = $false
           foreach ($line in Get-Content CHANGELOG.md -Encoding utf8) {

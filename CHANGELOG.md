@@ -1,6 +1,6 @@
 # What's new
 
-The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
+The app shows the entries for versions newer than yours on the About page. Keep each line short and plain.
 
 ## 0.3.0
 - A second voice model: Fish Audio S2 Pro (Windows). Very expressive, 80+ languages (Hindi, Urdu, Arabic, Turkish…), and it follows emotion tags like [whisper] or [excited] in the text. About real time on an NVIDIA card with 8 GB. Optional, and for non-commercial use (marked in red). Download it on the Models page.

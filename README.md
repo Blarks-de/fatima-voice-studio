@@ -8,7 +8,8 @@ Voiceovers and voice cloning on your own PC: paste a script (or fifty), pick a v
 and get each one back as WAV and MP3 at YouTube loudness, with SRT subtitles, in its own named, renamable folder.
 It runs [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base) locally through the official
 [llama.cpp](https://github.com/ggml-org/llama.cpp) engine: no cloud, no account, no per-minute cost, and the
-voice model is free for commercial use. It also works as an OpenAI-compatible speech API and as an MCP server
+voice model is free for commercial use. An optional second model, Fish Audio S2 Pro, adds 80+ languages and
+emotion tags like `[whisper]` (non-commercial). It also works as an OpenAI-compatible speech API and as an MCP server
 for AI agents (Claude Code, Codex, Antigravity, Hermes…).
 
 Made for Windows 10 and 11, with an installer. Linux and Apple Silicon Macs are community-supported: they run
@@ -26,6 +27,8 @@ The sibling of [Fatima Image Studio](https://github.com/hassanxs/Fatima-Image-St
 | Batches | One batch |
 |---|---|
 | ![Batches page: every batch is a folder on disk](studio/help/images/batches.webp) | ![A batch: each script with its WAV, MP3 and SRT, and every part with New take and Edit](studio/help/images/batch.webp) |
+| **S2 Pro: emotion tags** | **S2 Pro: six languages** |
+| ![A quick take with Fish Audio S2 Pro: [whisper], [excited] and [sad] tags in the text, its red non-commercial licence label and the tag hint](studio/help/images/create-s2.webp) | ![One S2 Pro batch in English, Hindi, Urdu, Arabic, Japanese and Turkish, each with its Whisper score](studio/help/images/batch-s2.webp) |
 | **Voices** | **Setup** |
 | ![Voices page: add a clip, or find a brand-new voice](studio/help/images/voices.webp) | ![Setup page: hardware check, recommended engine and model, speed test](studio/help/images/setup.webp) |
 | **Models** | **Settings** |
@@ -33,9 +36,10 @@ The sibling of [Fatima Image Studio](https://github.com/hassanxs/Fatima-Image-St
 | **Dark mode** | **About** |
 | ![A batch in dark mode](studio/help/images/batch-dark.webp) | ![About: version, model licences, and this PC's details to copy into a problem report](studio/help/images/about.webp) |
 
-**Hear it:** [English sample](docs/samples/english-nova.mp3) (18 s) · [Spanish sample](docs/samples/spanish-lucia.mp3) (17 s).
-Both made in the app on a laptop RTX 5060, with *found* voices (voices the model invented, nobody's real voice),
-levelled to −16 LUFS.
+**Hear it:** [English sample](docs/samples/english-nova.mp3) (18 s) · [Spanish sample](docs/samples/spanish-lucia.mp3) (17 s)
+with Qwen3-TTS; [English with emotion tags](docs/samples/s2-english-tags.mp3) (12 s) · [Hindi](docs/samples/s2-hindi.mp3) (12 s)
+with Fish Audio S2 Pro (the batch in the screenshot above). All made in the app on a laptop RTX 5060, with *found*
+voices (voices the model invented, nobody's real voice), levelled to −16 LUFS.
 
 ## Download and install
 
@@ -161,6 +165,24 @@ app under **Help** (works offline); and as Markdown in [`studio/help`](studio/he
 Every model shows its licence in the app. Non-commercial models (S2 Pro) carry a red label, are never picked as the
 default by themselves, and are refused to AI agents unless allowed on the Connect page. See [Setup and models](studio/help/setup-and-models.md) and
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+## Versions
+
+What changed in each release. The full list is in [CHANGELOG.md](CHANGELOG.md); the app shows what's new on its
+About page when an update is ready. Older installers stay on the [releases page](https://github.com/hassanxs/fatima-voice-studio/releases).
+
+| Version | Released | What changed |
+|---|---|---|
+| [0.3.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.0) | 12 Oct 2026 | Fish Audio S2 Pro, an optional second voice model: 80+ languages and emotion tags. Language lists show what each model speaks. Chinese and Japanese scripts are split and subtitled properly. |
+| [0.2.6](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.6) | 9 Oct 2026 | Updates moved to the About page. Fixed parts that wouldn't play after the batch page refreshed. |
+| [0.2.5](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.5) | 9 Oct 2026 | Whisper runs on the graphics card: subtitles and transcripts about 9× faster. |
+| [0.2.4](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.4) | 9 Oct 2026 | New top bar, About page, dark mode, waveform players and built-in Help guides; works on a fresh Windows install. |
+| [0.2.3](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.3) | 8 Oct 2026 | Clearer Updates panel; ready-made English and Spanish pronunciation lists. |
+| [0.2.2](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.2) | 8 Oct 2026 | Windows shows the right version number after a quick update. |
+| [0.2.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.1) | 8 Oct 2026 | Import and export the pronunciation list; update notices. |
+| [0.2.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.0) | 8 Oct 2026 | Pronunciation dictionary, numbers read as words, speed control, channel presets, the Transcribe page, and voices cleaned out of music. |
+| [0.1.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.1.1) | 8 Oct 2026 | Every Whisper size for subtitles, and a setting to pick one. |
+| [0.1.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.1.0) | 7 Oct 2026 | First release. |
 
 ## API and AI agents
 

@@ -78,6 +78,8 @@ Common tags: `[whisper]`, `[excited]`, `[sad]`, `[angry]`, `[surprised]`, `[low 
 `[pause]`, `[emphasis]`, `[professional broadcast tone]`. Any short description works, up to 60 characters. How
 strongly a tag is followed varies; try a **New take** if one doesn't land.
 
+![A quick take with S2 Pro: the tags in the text, and the tag hint under the Voice model list](images/create-s2.webp)
+
 - Tags are never read aloud or shown in the subtitles.
 - `[pause 2]` stays the app's own pause (see above), with any model.
 - **Qwen3-TTS** doesn't follow tags: it skips any words in square brackets.

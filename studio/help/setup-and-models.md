@@ -68,6 +68,8 @@ as Qwen3-TTS.
 - Pick it per batch, quick take or preset in the **Voice model** list on the Create page, or as the default in
   Settings. Scripts for it are spoken in shorter parts (about 300 characters).
 
+![One S2 Pro batch in English, Hindi, Urdu, Arabic, Japanese and Turkish](images/batch-s2.webp)
+
 ## Whisper models (subtitles and transcripts)
 
 Whisper listens to the finished audio to time the subtitles, checks that every part was read, and powers the
