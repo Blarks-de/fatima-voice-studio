@@ -117,13 +117,13 @@ def whisper_dir() -> Path:
 
 # The second voice engine: s2.cpp running Fish Audio S2 Pro, one build per graphics card engine (made by
 # .github/workflows/s2cpp.yml, release S2_RELEASE). The CUDA build loads cuBLAS/cudart from the voice engine's folder.
-# It comes with an S2 Pro model download. (url, size, sha256); size 0 = not published yet.
+# It comes with an S2 Pro model download. (url, size, sha256)
 S2_RELEASE = "s2cpp-2c33261"
 S2_EXE = "s2.exe"
 _S2 = f"{REPO_URL}/releases/download/{S2_RELEASE}/s2cpp-win-"
 S2_RUNTIME = {
-    "cuda": (_S2 + "cuda-13.4-x64.zip", 0, ""),
-    "vulkan": (_S2 + "vulkan-x64.zip", 0, ""),
+    "cuda": (_S2 + "cuda-13.4-x64.zip", 124289419, "257e8600d75947503ec0f031f26adfcd4a18dbec694c6ce08072d75875fe426b"),
+    "vulkan": (_S2 + "vulkan-x64.zip", 20430998, "123941edcf6ae522fd7121c6cd46107e8ffcbfa32b56041e9da7cbc14ab8f86c"),
 }
 
 
