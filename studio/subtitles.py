@@ -5,6 +5,7 @@ timing. Script words are matched to the words Whisper heard, and words it heard 
 "forty-two") get times interpolated from their neighbours. Without a Whisper model, cues are timed from the
 known segment boundaries, spreading each segment's time over its text.
 """
+import contextlib
 import difflib
 import json
 import logging
@@ -134,11 +135,20 @@ def run_whisper(cfg: dict, wav: Path, language: str | None, model: str | None = 
     raise WhisperError(error)
 
 
+# Set by the app: a context manager for Whisper's turn on the graphics card (S2 Pro makes room on small cards).
+GPU_TURN = contextlib.nullcontext
+
+
 def run_build(cfg: dict, build: dict, model_path: Path, wav: Path, language: str | None, stem: Path,
               limit: float, on_progress=None, extra: list[str] = (), on_start=None) -> tuple[int, list[str], bool]:
     """One whisper-cli run with a time limit; moves to the dedicated card (and remembers it) when Vulkan picked a
     built-in chip. on_start gets the process (so it can be stopped). Returns the exit code, the last lines it
     printed, and whether it ran out of time."""
+    with GPU_TURN() if build["gpu"] else contextlib.nullcontext():
+        return _run_build(cfg, build, model_path, wav, language, stem, limit, on_progress, extra, on_start)
+
+
+def _run_build(cfg, build, model_path, wav, language, stem, limit, on_progress, extra, on_start):
     for _ in range(2):
         proc = start_whisper(cfg, build, model_path, wav, language, stem, extra)
         if on_start:

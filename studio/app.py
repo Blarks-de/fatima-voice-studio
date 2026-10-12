@@ -90,6 +90,7 @@ def create_app(cfg: dict) -> FastAPI:
         tasks = [asyncio.create_task(worker.run()), asyncio.create_task(updater.watch()),
                  asyncio.create_task(transcripts.run())]
         log.info("%s on http://%s:%s  (batches: %s)", APP_NAME, cfg["host"], cfg["port"], store.root)
+        subtitles.GPU_TURN = engine.s2.gpu_turn  # Whisper and S2 Pro take turns on small graphics cards
         downloads.ensure_whisper_gpu()  # e.g. after an update: Whisper's graphics card build, if it's missing
         downloads.ensure_s2_runtime()   # and s2.cpp, if an S2 Pro model is there without it
         if mcp:

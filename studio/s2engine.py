@@ -5,6 +5,7 @@ POST /generate: the text, the voice's clip and its transcript (s2.cpp clones a v
 cap. The transcript is made once with Whisper and kept in the voice's voice.json. The server is stopped after a few
 idle minutes, before Qwen3-TTS runs (both won't fit on an 8 GB card), and when the app closes.
 """
+import contextlib
 import http.client
 import json
 import logging
@@ -17,12 +18,13 @@ import time
 import uuid
 from pathlib import Path
 
-from . import config, runtime, subtitles, text as textmod
+from . import config, hardware, runtime, subtitles, text as textmod
 
 log = logging.getLogger("studio.s2engine")
 
 FRAME_RATE = 44100 / 2048  # S2 Pro's codec frames per second of audio
 IDLE_STOP_S = 300          # free the graphics card after this long without a part
+SHARE_GB = 12              # below this much graphics memory, S2 Pro and Whisper take turns on the card
 START_TIMEOUT_S = 240
 PROGRESS = re.compile(r"\[Generate\]\s+(\d+)\s*/\s*(\d+)\s+tokens")
 VK_DEVICE = re.compile(r"ggml_vulkan: (\d+) = .*?\| uma: (\d)")  # uma 1 = built into the processor
@@ -57,7 +59,8 @@ class S2Server:
         self._uma: dict[int, bool] = {}
         self._conn: http.client.HTTPConnection | None = None
         self._cancel = False
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # re-entrant: a part's voice transcript runs Whisper through gpu_turn
+        self._held = 0
         threading.Thread(target=self._idle_watch, daemon=True).start()
 
     # ---- the server process ----
@@ -78,8 +81,27 @@ class S2Server:
     def _idle_watch(self) -> None:
         while True:
             time.sleep(15)
-            if self.running() and not self._lock.locked() and time.monotonic() - self.last_used > IDLE_STOP_S:
+            if self.running() and not self._held and time.monotonic() - self.last_used > IDLE_STOP_S:
                 self.stop()
+
+    @contextlib.contextmanager
+    def gpu_turn(self):
+        """Whisper's turn on the graphics card. On cards under SHARE_GB, S2 Pro (about 7 GB) and Whisper don't fit
+        together: wait for the part being spoken to finish, unload the server, and let the next part load it again
+        (about 5 s). Bigger cards run both side by side."""
+        gpu = hardware.main_gpu(hardware.detect())
+        if not gpu or gpu["vram_gb"] >= SHARE_GB:
+            yield
+            return
+        with self._lock:
+            self._held += 1
+            try:
+                if self.running():
+                    log.info("S2 Pro makes room on the graphics card for Whisper")
+                    self.stop()
+                yield
+            finally:
+                self._held -= 1
 
     def _device(self) -> int | None:
         """Vulkan device to use: the one remembered (also found by Whisper: the same order), else let it start on 0
@@ -220,43 +242,50 @@ class S2Server:
     def speak(self, model: str, text: str, voice: Path | None, seed: int, out: Path) -> None:
         """Speak `text` into the WAV file `out` (blocking; run it in a thread)."""
         with self._lock:
-            self._cancel = False
-            ref = (voice, transcript(self.cfg, voice)) if voice else None  # before the server takes the card
-            self.ensure(model)
-            if self._cancel:
-                raise S2Cancelled()
-            expected = textmod.estimate_seconds(text) * FRAME_RATE
-            params = {"seed": int(seed) % 2**31, "max_new_tokens": int(min(4096, expected * 3 + 150))}
-            fields = {"text": text, "params": json.dumps(params)}
-            files = {}
-            if ref:
-                fields["reference_text"] = ref[1]
-                files["reference"] = ("voice.wav", Path(ref[0]).read_bytes(), "audio/wav")
-            self.frames = 0
-            out = Path(out)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.unlink(missing_ok=True)
-            tmp = out.with_name(out.name + ".part")
+            self._held += 1
             try:
-                self._post(fields, files, tmp)
-                tmp.replace(out)
-            except (OSError, http.client.HTTPException) as e:
-                tmp.unlink(missing_ok=True)
-                if self._cancel:
-                    raise S2Cancelled()
-                try:  # a dropped connection is usually the server going down: give Windows a moment to say so
-                    self.proc.wait(timeout=3)
-                except (subprocess.TimeoutExpired, AttributeError):
-                    pass
-                if not self.running():
-                    self.stop()
-                    raise S2Error("S2 Pro stopped while speaking. It starts again for the next part.") from e
-                raise S2Error(f"S2 Pro couldn't speak this part: {e}") from e
+                self._speak(model, text, voice, seed, out)
             finally:
-                self.last_used = time.monotonic()
+                self._held -= 1
+
+    def _speak(self, model: str, text: str, voice: Path | None, seed: int, out: Path) -> None:
+        self._cancel = False
+        ref = (voice, transcript(self.cfg, voice)) if voice else None  # before the server takes the card
+        self.ensure(model)
+        if self._cancel:
+            raise S2Cancelled()
+        expected = textmod.estimate_seconds(text) * FRAME_RATE
+        params = {"seed": int(seed) % 2**31, "max_new_tokens": int(min(4096, expected * 3 + 150))}
+        fields = {"text": text, "params": json.dumps(params)}
+        files = {}
+        if ref:
+            fields["reference_text"] = ref[1]
+            files["reference"] = ("voice.wav", Path(ref[0]).read_bytes(), "audio/wav")
+        self.frames = 0
+        out = Path(out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.unlink(missing_ok=True)
+        tmp = out.with_name(out.name + ".part")
+        try:
+            self._post(fields, files, tmp)
+            tmp.replace(out)
+        except (OSError, http.client.HTTPException) as e:
+            tmp.unlink(missing_ok=True)
             if self._cancel:
-                out.unlink(missing_ok=True)
                 raise S2Cancelled()
+            try:  # a dropped connection is usually the server going down: give Windows a moment to say so
+                self.proc.wait(timeout=3)
+            except (subprocess.TimeoutExpired, AttributeError):
+                pass
+            if not self.running():
+                self.stop()
+                raise S2Error("S2 Pro stopped while speaking. It starts again for the next part.") from e
+            raise S2Error(f"S2 Pro couldn't speak this part: {e}") from e
+        finally:
+            self.last_used = time.monotonic()
+        if self._cancel:
+            out.unlink(missing_ok=True)
+            raise S2Cancelled()
 
 
 def transcript(cfg: dict, clip: Path) -> str:
