@@ -51,13 +51,13 @@ jobs:
         run: |
           foreach ($p in "${{ inputs.prs }}".Split(" ", [StringSplitOptions]::RemoveEmptyEntries)) {
             $num, $sha = $p.Split("@")
-            git fetch --no-tags origin $sha
+            git fetch --no-tags --no-recurse-submodules origin $sha  # the PRs keep ggml where it is
             if ($LASTEXITCODE) { throw "Couldn't fetch PR #$num at $sha" }
             git -c user.name=build -c user.email=build@localhost merge --no-edit $sha
             if ($LASTEXITCODE) { throw "PR #$num doesn't merge cleanly" }
             Write-Host "Merged PR #$num ($sha)"
           }
-          git submodule update --init --recursive
+          git submodule status
 
       # The same CUDA components and versions as llama.cpp's Windows builds of the voice engine (b11476).
       - name: Install CUDA 13.4
