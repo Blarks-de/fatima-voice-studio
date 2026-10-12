@@ -1,9 +1,15 @@
-# Test builds of s2.cpp (https://github.com/rodrigomatta/s2.cpp), a C++/ggml engine for Fish Audio S2 Pro, to see
-# whether it can be a second voice engine. Run by hand; the builds are kept as workflow artifacts only.
+# Builds s2.cpp (https://github.com/rodrigomatta/s2.cpp), the C++/ggml engine for Fish Audio S2 Pro, the app's second
+# voice engine, and publishes the builds as their own release (tag input below). The app downloads the one matching
+# the voice engine a PC uses:
 #
-#   cuda-13.4 -> NVIDIA (RTX 20 series and newer); loads cuBLAS 13 / cudart 13 from the voice engine "cuda" folder
-#   vulkan    -> AMD, Intel and NVIDIA; needs only the graphics driver
-name: s2.cpp test builds
+#   cuda-13.4 -> voice engine "cuda" (RTX 20 series and newer); loads cuBLAS 13 / cudart 13 from that engine's folder
+#   vulkan    -> voice engine "vulkan" (AMD, Intel, NVIDIA); needs only the graphics driver
+#
+# What goes in: s2.cpp at a fixed commit, pull requests #50 (faster generation: flash attention, CUDA graphs), #51
+# (single-pass audio decode, so the decoder fits on 8 GB cards) and #52 (CUDA fixes, faster im2col), each at a fixed
+# commit, plus packaging/s2cpp/seed.patch (--seed / "seed": repeatable takes) and two build fixes (below).
+# Run it by hand; app releases don't.
+name: s2.cpp builds
 
 on:
   workflow_dispatch:
@@ -16,13 +22,17 @@ on:
         description: "Pull requests to merge on top, as number@commit (space separated); empty for none"
         required: false
         default: "50@49bb869e2399555ab23be1d6ec4b8aa67c0b6a3c 51@f468f9d70e269855f67c2c7e0080071263edb40b 52@68ebea3f66e143ad58e326d11aee2b1817c1ae9c"
+      release:
+        description: "Release tag to publish (empty: keep the zips as workflow artifacts only)"
+        required: false
+        default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
-    name: s2.cpp ${{ matrix.backend }}${{ inputs.prs != '' && ' + PRs' || '' }}
+    name: s2.cpp ${{ matrix.backend }}
     runs-on: windows-2022
     strategy:
       fail-fast: false
@@ -35,6 +45,9 @@ jobs:
     env:
       VULKAN_VERSION: 1.4.357.0
     steps:
+      - name: Keep line endings as they are (so patches apply)
+        run: git config --global core.autocrlf false
+
       - name: Get s2.cpp
         uses: actions/checkout@v4
         with:
@@ -43,8 +56,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # #50 faster generation (flash attention, CUDA graphs), #51 single-pass offline codec decode, #52 CUDA fixes and
-      # a faster im2col. Each at a fixed commit, so a build always contains the same code.
+      - name: Get this project's patches
+        uses: actions/checkout@v4
+        with:
+          path: fvs
+          sparse-checkout: packaging/s2cpp
+
       - name: Merge pull requests
         if: inputs.prs != ''
         shell: pwsh
@@ -58,6 +75,14 @@ jobs:
             Write-Host "Merged PR #$num ($sha)"
           }
           git submodule status
+
+      - name: Apply this project's patches
+        shell: pwsh
+        run: |
+          foreach ($p in Get-ChildItem fvs\packaging\s2cpp\*.patch) {
+            git apply --verbose $p.FullName
+            if ($LASTEXITCODE) { throw "$($p.Name) doesn't apply" }
+          }
 
       # The same CUDA components and versions as llama.cpp's Windows builds of the voice engine (b11476).
       - name: Install CUDA 13.4
@@ -101,19 +126,18 @@ jobs:
           "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "C:\VulkanSDK\$env:VULKAN_VERSION\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      # s2.cpp applies its own ggml patches with `patch` (Git for Windows has it). (std::max)(...) compiles with and
-      # without Windows' max macro (PR #48's plain std::max only builds with NOMINMAX).
+      # s2.cpp applies its own ggml patches with `patch` (Git for Windows has it). Build fixes:
+      # - (std::max)(...) compiles with and without Windows' max macro (PR #48's plain std::max needs NOMINMAX);
+      # - its ggml uses cuda::make_counting_iterator / cuda::discard_iterator in top-k.cu without including
+      #   <cuda/iterator>, where CCCL 3.4 (CUDA 13.4) keeps them; newer ggml includes it.
       - name: Prepare
         shell: pwsh
         run: |
           choco install ninja -y --no-progress
           "C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           (Get-Content src\main.cpp -Raw) -replace '= max\(0, std::stoi', '= (std::max)(0, std::stoi' | Set-Content src\main.cpp -NoNewline
-          # s2.cpp's ggml uses cuda::make_counting_iterator / cuda::discard_iterator in top-k.cu without including
-          # <cuda/iterator>, where CCCL 3.4 (CUDA 13.4) keeps them; newer ggml includes it.
           $topk = "ggml\src\ggml-cuda\top-k.cu"
           (Get-Content $topk -Raw) -replace '(#\s*include <cub/cub.cuh>)', "`$1`n#    if __has_include(<cuda/iterator>)`n#        include <cuda/iterator>`n#    endif" | Set-Content $topk -NoNewline
-          Select-String -Path $topk -Pattern 'include <cu' | ForEach-Object { $_.Line } | Write-Host
 
       - name: Build
         shell: cmd
@@ -124,20 +148,66 @@ jobs:
           set /A JOBS=%NUMBER_OF_PROCESSORS%-1
           cmake --build build --config Release -j %JOBS% --target s2
 
+      # The licence asks redistributions to carry it and this notice.
       - name: Pack
         shell: pwsh
         run: |
           $out = "pack"
           New-Item -ItemType Directory -Force $out | Out-Null
           Get-ChildItem build -Recurse -Include s2.exe, *.dll | Where-Object { $_.FullName -notmatch '\\CMakeFiles\\' } | Copy-Item -Destination $out
-          Copy-Item LICENSE.md "$out\LICENSE-s2.cpp.md"
+          Copy-Item LICENSE.md "$out\LICENSE.md"
           Copy-Item tokenizer.json $out
-          "s2.cpp $(git rev-parse HEAD), ${{ matrix.backend }}, built for testing in Fatima Voice Studio." | Out-File "$out\README.txt" -Encoding utf8
+          @"
+          This model is licensed under the Fish Audio Research License, Copyright © 39 AI, INC. All Rights Reserved.
+
+          Built with Fish Audio. This is s2.cpp ($(git rev-parse HEAD), https://github.com/rodrigomatta/s2.cpp), changed for
+          Fatima Voice Studio: pull requests ${{ inputs.prs }} merged; packaging/s2cpp/seed.patch (a --seed option and a
+          "seed" server parameter for repeatable takes); (std::max) in src/main.cpp; <cuda/iterator> in ggml's top-k.cu.
+          Backend: ${{ matrix.backend }}.
+          "@ | Out-File "$out\NOTICE.txt" -Encoding utf8
           Get-ChildItem $out | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}} | Format-Table | Out-String | Write-Host
           if (-not (Test-Path "$out\s2.exe")) { throw "s2.exe wasn't built" }
+          & "$out\s2.exe" --help | Select-String -- '--seed' | Out-String | Write-Host
           Compress-Archive -Path "$out\*" -DestinationPath "s2cpp-win-${{ matrix.backend }}-x64.zip"
 
       - uses: actions/upload-artifact@v4
         with:
           name: s2cpp-${{ matrix.backend }}
           path: s2cpp-*.zip
+
+  publish:
+    needs: build
+    if: inputs.release != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # --latest=false: the app's updater reads the latest release, which must stay the newest app version.
+      - name: Publish release ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum *.zip > SHA256SUMS.txt
+          {
+            echo "s2.cpp (Fish Audio S2 Pro engine), built for Fatima Voice Studio. The app downloads the one matching your"
+            echo "voice engine by itself; there's nothing to install by hand."
+            echo
+            echo "| File | Voice engine | Cards |"
+            echo "|---|---|---|"
+            echo "| cuda-13.4 | NVIDIA · CUDA | GeForce RTX 20 series and newer |"
+            echo "| vulkan | AMD / Intel · Vulkan | AMD Radeon, Intel Arc, NVIDIA (slower) |"
+            echo
+            echo "s2.cpp ${{ inputs.ref }} with pull requests ${{ inputs.prs }} and packaging/s2cpp/seed.patch."
+            echo "Fish Audio Research License (LICENSE.md and NOTICE.txt in each zip). Built with Fish Audio."
+            echo
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+          } > notes.md
+          gh release create "${{ inputs.release }}" *.zip SHA256SUMS.txt \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "s2.cpp for S2 Pro (${{ inputs.release }})" --notes-file notes.md --latest=false

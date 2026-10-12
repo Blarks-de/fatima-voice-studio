@@ -1,0 +1,106 @@
+diff --git a/include/s2_generate.h b/include/s2_generate.h
+index c6b7dd4..89589bd 100644
+--- a/include/s2_generate.h
++++ b/include/s2_generate.h
+@@ -26,6 +26,7 @@ struct GenerateParams {
+     float   top_p                   = 0.8f;
+     int32_t top_k                   = 30;
+     int32_t min_tokens_before_end   = 0;
++    int64_t seed                    = -1;  // >= 0: repeatable sampling
+     int32_t n_threads               = 0;
+     bool    verbose                 = true;
+     FrameCallback on_frame;
+diff --git a/include/s2_sampler.h b/include/s2_sampler.h
+index 3468b40..f82394e 100755
+--- a/include/s2_sampler.h
++++ b/include/s2_sampler.h
+@@ -13,5 +13,8 @@ struct SamplerParams {
+ 
+ int32_t sample_token(const float * logits, int32_t vocab_size, const SamplerParams & params);
+ 
++// Restart this thread's random numbers from `seed`, so a synthesis can be repeated exactly.
++void sampler_seed(uint64_t seed);
++
+ 
+ }
+diff --git a/src/main.cpp b/src/main.cpp
+index 1a3bbda..bf0a437 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -81,6 +81,7 @@ void print_uso() {
+     safe_print("  -temp, --temp, --temperature <f>  Temperature\n");
+     safe_print("  -top-p, --top-p    <f>      Top-p sampling\n");
+     safe_print("  -top-k, --top-k    <n>      Top-k sampling\n");
++    safe_print("  --seed             <n>      Seed for repeatable sampling (default: random)\n");
+     safe_print("  --dynamic-normalize         Apply dynamic RMS normalization\n");
+     safe_print("  --no-dynamic-normalize      Disable dynamic RMS normalization\n");
+     safe_print("  --no-trim-silence           Keep trailing silence in output WAV\n");
+@@ -186,6 +187,7 @@ int main(int argc, char** argv) {
+         else if (arg == "-temp" || arg == "--temp" || arg == "--temperature") { if (i+1 < argc) { try { params.gen.temperature = std::stof(argv[++i]); } catch(...) {} } }
+         else if (arg == "-top-p" || arg == "--top-p")      { if (i+1 < argc) { try { params.gen.top_p       = std::stof(argv[++i]); } catch(...) {} } }
+         else if (arg == "-top-k" || arg == "--top-k")      { if (i+1 < argc) { try { params.gen.top_k       = std::stoi(argv[++i]); } catch(...) {} } }
++        else if (arg == "--seed")                          { if (i+1 < argc) { try { params.gen.seed        = std::stoll(argv[++i]); } catch(...) {} } }
+         else if (arg == "--dynamic-normalize")     { params.normalize_dynamic = true;  }
+         else if (arg == "--no-dynamic-normalize")  { params.normalize_dynamic = false; }
+         else if (arg == "--no-trim-silence")  { params.trim_silence     = false; }
+diff --git a/src/s2_generate.cpp b/src/s2_generate.cpp
+index 6a953b4..8578ef6 100755
+--- a/src/s2_generate.cpp
++++ b/src/s2_generate.cpp
+@@ -16,6 +16,9 @@ GenerateResult generate(
+ ) {
+     const auto generate_t0 = std::chrono::steady_clock::now();
+     GenerateResult out;
++    if (params.seed >= 0) {
++        sampler_seed(static_cast<uint64_t>(params.seed));
++    }
+     model.set_im_end_id(config.im_end_id);
+     out.num_codebooks = model.hparams().num_codebooks;
+     if (out.num_codebooks <= 0) out.num_codebooks = 1;
+diff --git a/src/s2_sampler.cpp b/src/s2_sampler.cpp
+index fd400da..57829db 100755
+--- a/src/s2_sampler.cpp
++++ b/src/s2_sampler.cpp
+@@ -5,6 +5,15 @@
+ 
+ namespace s2 {
+ 
++static std::mt19937 & sampler_rng() {
++    thread_local static std::mt19937 gen(std::random_device{}());
++    return gen;
++}
++
++void sampler_seed(uint64_t seed) {
++    sampler_rng().seed(static_cast<std::mt19937::result_type>(seed ^ (seed >> 32)));
++}
++
+ static void apply_softmax(std::vector<float> & probs, float temp = 1.0f) {
+     if (probs.empty()) return;
+     float max_val = *std::max_element(probs.begin(), probs.end());
+@@ -91,10 +100,9 @@ int32_t sample_token(const float * logits, int32_t vocab_size, const SamplerPara
+     }
+     for (float & p : probs) p /= sum_p;
+ 
+-    thread_local static std::mt19937 gen(std::random_device{}());
+     std::discrete_distribution<int32_t> dist(probs.begin(), probs.end());
+ 
+-    const int32_t sampled_idx = dist(gen);
++    const int32_t sampled_idx = dist(sampler_rng());
+     return filtered[sampled_idx].second;
+ }
+ 
+diff --git a/src/s2_server.cpp b/src/s2_server.cpp
+index 08fea2d..89f9c85 100644
+--- a/src/s2_server.cpp
++++ b/src/s2_server.cpp
+@@ -546,6 +546,10 @@ namespace s2
+                             pipelineParams.gen.top_k = std::max(0, val);
+                         }
+ 
++                        if (j.contains("seed")) {
++                            pipelineParams.gen.seed = j["seed"].get<int64_t>();
++                        }
++
+                         if (j.contains("min_tokens_before_end")) {
+                             int32_t val = j["min_tokens_before_end"].get<int32_t>();
+                             pipelineParams.gen.min_tokens_before_end = std::max(0, val);
