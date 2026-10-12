@@ -81,12 +81,13 @@ Whisper listens to the finished audio to time the subtitles, checks that every p
 | **Whisper base** | The smallest and quickest. | 60 MB |
 | **Whisper small** | Recommended for subtitles. About 10× faster than real time. | 190 MB |
 | **Whisper medium** | More accurate, especially in Spanish and other non-English languages. | 539 MB |
-| **Whisper large-v3 turbo** | Close to the best accuracy, much quicker than large-v3. Good for transcribing other people's audio. | 574 MB |
+| **Whisper large-v3 turbo** | Close to the best accuracy, much quicker than large-v3. Used by itself when Whisper runs on the graphics card. Good for transcribing other people's audio. | 574 MB |
 | **Whisper large-v3** | The most accurate, and the slowest. For hard audio: accents, noise, music underneath. | 1.1 GB |
 
 When you have more than one, choose which one is used with **Use this one** on the Models page, or in
-**Settings → Files**. Your subtitles always use your script's own words; Whisper only times them, so *small* is
-plenty for subtitles.
+**Settings → Files**. Left on *Best one downloaded*, the app uses *large-v3 turbo* when Whisper runs on your
+graphics card (about as quick there as *small*, and much more accurate outside English), otherwise *small*. Your
+subtitles always use your script's own words; Whisper only times them and checks that every word was said.
 
 ### Whisper on the graphics card
 

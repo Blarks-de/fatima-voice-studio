@@ -282,6 +282,8 @@ if sys.platform != "win32":  # s2.cpp is built for Windows only (the Linux and m
     for _k in [k for k, m in MODELS.items() if m.get("runtime") == "s2"]:
         del MODELS[_k]
 SUBTITLE_PREFERENCE = ["whisper-small", "whisper-turbo", "whisper-medium", "whisper-base", "whisper-large"]
+# With Whisper on the graphics card, turbo is about as quick as small there and far more accurate outside English.
+SUBTITLE_PREFERENCE_GPU = ["whisper-turbo", *(k for k in SUBTITLE_PREFERENCE if k != "whisper-turbo")]
 
 
 def model_files(key: str) -> list[str]:
@@ -331,8 +333,10 @@ def installed_models(cfg: dict) -> list[str]:
 
 
 def subtitles_model(cfg: dict) -> str | None:
-    """The Whisper model to use: the one chosen in Settings if it's installed, else the best installed one."""
+    """The Whisper model to use: the one chosen in Settings if it's installed, else the best installed one (turbo
+    first when Whisper runs on the graphics card)."""
     installed = installed_models(cfg)
     if cfg.get("subtitles_model") in installed:
         return cfg["subtitles_model"]
-    return next((k for k in SUBTITLE_PREFERENCE if k in installed), None)
+    gpu = (key := whisper_gpu_engine(cfg)) and (whisper_gpu_dir(key) / WHISPER_EXE).exists()
+    return next((k for k in (SUBTITLE_PREFERENCE_GPU if gpu else SUBTITLE_PREFERENCE) if k in installed), None)
