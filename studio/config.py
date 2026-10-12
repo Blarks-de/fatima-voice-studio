@@ -229,7 +229,7 @@ MODELS = {
         "short": "S2 Pro · expressive, 80+ languages", "api_id": "s2-pro", "files": ["s2-pro-q8_0.gguf"],
         "license": "Fish Audio Research License — non-commercial; commercial use needs a licence from Fish Audio",
         "noncommercial": True, "page": HF + "fishaudio/s2-pro", "languages": S2_LANGUAGES, "vram_gb": 7.2,
-        "max_chars": 300,
+        "max_chars": 300, "tags": True,
         "about": "Very expressive, with emotion tags like [whisper] or [excited] in the text, and 80+ languages. "
                  "About real time on an NVIDIA card with 8 GB or more (half the speed of Qwen3-TTS); slower on Vulkan."},
     "s2-pro-q6": {
@@ -237,7 +237,7 @@ MODELS = {
         "short": "S2 Pro · for 6-8 GB cards", "api_id": "s2-pro-q6", "files": ["s2-pro-q6_k.gguf"],
         "license": "Fish Audio Research License — non-commercial; commercial use needs a licence from Fish Audio",
         "noncommercial": True, "page": HF + "fishaudio/s2-pro", "languages": S2_LANGUAGES, "vram_gb": 6.2,
-        "max_chars": 300,
+        "max_chars": 300, "tags": True,
         "about": "Same model, compressed a little further, for graphics cards with 6 to 8 GB. Emotion tags are a "
                  "little weaker than in Q8."},
     # Subtitle timing only needs Whisper to find the words (the text comes from the script), so small is plenty;

@@ -186,7 +186,7 @@ def transcript(result: dict) -> str:
 def _script_units(script: str) -> list[list[str]]:
     """The script as subtitle-sized pieces of words: sentences, split further when too long."""
     units = []
-    clean = textmod.PAUSE_TAG.sub(" ", textmod.clean(script))
+    clean = textmod.PAUSE_TAG.sub(" ", textmod.strip_tags(textmod.clean(script)))  # subtitles show what's said
     for paragraph in clean.split("\n\n"):
         for sentence in textmod.sentences(paragraph):
             words = sentence.split()
@@ -317,7 +317,7 @@ def from_segments(segments: list[tuple[str, float, float]], track_end: float) ->
 
 def match_rate(script: str, heard: list[tuple[str, float, float]]) -> float:
     """Share of script words Whisper heard the same way: a quick check that the audio says the script."""
-    a = [_norm(w) for w in textmod.PAUSE_TAG.sub(" ", script).split() if _norm(w)]
+    a = [_norm(w) for w in textmod.PAUSE_TAG.sub(" ", textmod.strip_tags(script)).split() if _norm(w)]
     b = [_norm(w) for w, _, _ in heard]
     if not a:
         return 1.0

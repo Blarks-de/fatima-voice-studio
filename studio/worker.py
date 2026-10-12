@@ -98,9 +98,16 @@ class Worker:
                 await self._wake.wait()
 
     def spoken_text(self, text: str, s: dict) -> str:
-        """What the engine reads: the pronunciation dictionary applied and numbers spelled out (the script stays as written)."""
-        return speakable(text, s.get("language") or self.cfg["default_language"], self.dictionary,
-                         numbers=s.get("spell_numbers", self.cfg.get("spell_numbers", True)))
+        """What the engine reads: the pronunciation dictionary applied and numbers spelled out (the script stays as
+        written). [Tags] go to models that act on them untouched, and are left out for the others."""
+        lang = s.get("language") or self.cfg["default_language"]
+        numbers = s.get("spell_numbers", self.cfg.get("spell_numbers", True))
+        if not config.MODELS.get(s.get("model") or self.cfg["default_model"], {}).get("tags"):
+            return speakable(textmod.strip_tags(text), lang, self.dictionary, numbers=numbers)
+        pieces = textmod.TAG.split(text)  # the words between the tags
+        tags = textmod.TAG.findall(text)
+        out = [speakable(p, lang, self.dictionary, numbers=numbers) if p.strip() else p for p in pieces]
+        return "".join(p + (tags[i] if i < len(tags) else "") for i, p in enumerate(out))
 
     def voice_clip(self, ref: str | None) -> Path | None:
         if not ref:
@@ -281,7 +288,7 @@ class Worker:
         parts = textmod.split(text, **split)
         numbers = self.cfg.get("spell_numbers", True) if spell_numbers is None else spell_numbers
         for p in parts:
-            p["text"] = self.spoken_text(p["text"], {"language": language, "spell_numbers": numbers})
+            p["text"] = self.spoken_text(p["text"], {"language": language, "spell_numbers": numbers, "model": model})
         speed = max(config.SPEED_RANGE[0], min(config.SPEED_RANGE[1], float(speed or 1.0)))
         if not parts:
             raise ValueError("There's no text to speak.")

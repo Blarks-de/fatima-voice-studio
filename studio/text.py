@@ -5,12 +5,15 @@ segments of up to `max_chars` characters. Segments never cross a paragraph or a 
 them is always ours (and the right length), and a segment can be regenerated on its own.
 
 Pause tags: [pause] (1 second), [pause 2], [pause 2s], [pause 1.5 s], [pause 500ms].
+Other words in square brackets are tags for voice models that act on them (S2 Pro: [whisper], [excited],
+[low voice]...): sent to those as written, left out everywhere else (other models, subtitles, estimates).
 """
 import re
 
 PAUSE_TAG = re.compile(r"\[\s*pause(?:\s+(\d+(?:[.,]\d+)?)\s*(ms|s|sec|seconds?)?)?\s*\]", re.I)
 SENTENCE_END = re.compile(r"(?<=[.!?…。！？])[\"'”’»)\]]*\s+")
 CLAUSE_END = re.compile(r"(?<=[,;:—–])\s+")
+TAG = re.compile(r"\[(?!\s*pause\b)[^\[\]\n]{1,60}\]", re.I)  # [whisper], not [pause 2]
 MIN_SEGMENT = 40  # characters: shorter sentences are joined to their neighbour when they fit
 
 
@@ -116,6 +119,13 @@ def title_of(text: str, words: int = 6) -> str:
     return " ".join(w[:words]) or "Untitled"
 
 
+def strip_tags(text: str) -> str:
+    """The text without [tags] (pause tags stay): what's actually said."""
+    text = TAG.sub(" ", text)
+    text = re.sub(r" +([,.;:!?…])", r"\1", re.sub(r"[ \t]{2,}", " ", text))
+    return text.strip()
+
+
 def estimate_seconds(text: str) -> float:
-    """Rough speaking time: about 14 characters per second across our languages."""
-    return len(re.sub(PAUSE_TAG, "", text)) / 14.0
+    """Rough speaking time: about 14 characters per second across our languages (tags aren't spoken)."""
+    return len(re.sub(PAUSE_TAG, "", strip_tags(text))) / 14.0
