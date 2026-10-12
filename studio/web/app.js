@@ -611,7 +611,7 @@ function fillCreateSelects() {
   const keepLang = $('language').dataset.touched ? $('language').value : (v?.language || st.default_language);
   $('language').innerHTML = languageOptions(keepLang);
   const keepModel = $('model').value || st.default_model;
-  $('model').innerHTML = st.models.filter((m) => m.kind === 'voice').map((m) => `<option value="${m.key}"${m.key === keepModel ? ' selected' : ''}${m.installed ? '' : ' disabled'}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('');
+  $('model').innerHTML = st.models.filter(speakable).map((m) => `<option value="${m.key}"${m.key === keepModel ? ' selected' : ''}${m.installed ? '' : ' disabled'}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('');
   const m = st.models.find((x) => x.key === $('model').value);
   $('model-license').innerHTML = m ? licenseBadge(m) : '';
   $('voice-help').innerHTML = !S.voices.length ? 'Add a voice first: <a href="#voices">Voices → Add a voice</a> (a 6–15 second clip), or find a new one there.'
@@ -1157,7 +1157,7 @@ async function loadModels() {
   const group = (kind, title, help, extra = '') => `<div class="group-title">${title}</div><p class="help" style="margin:-6px 0 12px">${help}</p>${extra}`
     + models.filter((m) => m.kind === kind).map(modelCard).join('');
   const [tools, wg] = await Promise.all([api('/api/tools'), api('/api/whisper-gpu').catch(() => null)]);
-  setHtml($('models-list'), group('voice', 'Voice models', 'Speak your scripts. Each runs on the engine chosen on the Setup page.')
+  setHtml($('models-list'), group('voice', 'Voice models', 'Speak your scripts. Qwen3-TTS runs on every engine chosen on the Setup page; S2 Pro on the NVIDIA · CUDA or AMD / Intel · Vulkan engine.')
     + group('subtitles', 'Subtitles and transcripts', 'Time the SRT subtitles of every finished script, and power the Transcribe page and the transcription API. They run on your graphics card with a CUDA or Vulkan engine, otherwise on the processor.', whisperWhere(wg, models.some((m) => m.kind === 'subtitles' && m.installed)))
     + group('separation', 'Voice separator', 'Takes a voice out of music or background sound when you add a voice from a video or a song.')
     + `<div class="group-title">Tools</div><p class="help" style="margin:-6px 0 12px">Programs the app uses for some file types.</p>`
@@ -1213,6 +1213,8 @@ document.addEventListener('click', run(async (e) => {
   setTimeout(loadModels, 300);
 }));
 
+// Voice models the app can speak with now (S2 Pro's engine comes in the next step of its integration).
+const speakable = (m) => m.kind === 'voice' && m.runtime !== 's2';
 function modelCard(m) {
   const busy = m.job && ['downloading', 'checking', 'installing'].includes(m.job.status);
   let acts;
@@ -1220,13 +1222,17 @@ function modelCard(m) {
   else if (m.installed && m.kind === 'subtitles') acts = (m.in_use ? `<span class="chip ok">${icon('check')} In use</span>`
     : `<span class="chip">Downloaded</span><button class="btn sm accent" data-m="use" data-key="${m.key}">Use this one</button>`)
     + `<button class="btn sm" data-m="remove" data-key="${m.key}">Remove</button>`;
+  else if (m.installed && m.runtime_job && ['downloading', 'checking', 'installing'].includes(m.runtime_job.status)) acts = dlBox(m.runtime_job, 0, 0, 'm', m.key);
   else if (m.installed) acts = `<span class="chip ok">${icon('check')} Downloaded</span><button class="btn sm" data-m="remove" data-key="${m.key}">Remove</button>`;
+  else if (!m.engine_ok) acts = `<span class="help" style="max-width:240px;text-align:right">Needs the NVIDIA · CUDA or AMD / Intel · Vulkan engine (<a href="#setup">Setup</a>)</span>`;
   else if (m.partial) acts = `<button class="btn sm accent" data-m="download" data-key="${m.key}">${icon('download')} Resume (${fmtSize(m.partial)} done)</button><button class="text-btn red" data-m="discard" data-key="${m.key}">Discard</button>`;
   else acts = `<button class="btn sm accent" data-m="download" data-key="${m.key}">${icon('download')} Download ${fmtSize(m.to_download)}</button>`;
   return `<div class="card mcard"><div class="main">
       <div class="name">${esc(m.label)} ${licenseBadge(m)}${m.default ? '<span class="chip accent">Default</span>' : ''}${m.recommended && !m.installed ? '<span class="chip dark">Recommended</span>' : ''}</div>
       <div class="about">${esc(m.about)}</div>
-      <div class="meta"><span>${fmtSize(m.size)}</span>${m.shared?.length ? `<span>shares ${plural(m.shared.length, 'file')} with other models (downloaded once)</span>` : ''}<a href="${esc(m.page)}" target="_blank" rel="noopener">Model page ↗</a>${m.fit && m.fit !== 'fits' && m.fit !== 'cpu' ? `<span style="color:var(--warn)">${m.fit === 'tight' ? 'tight fit for your GPU' : 'too big for your GPU'}</span>` : ''}</div>
+      <div class="meta"><span>${fmtSize(m.size)}</span>${m.shared?.length ? `<span>shares ${plural(m.shared.length, 'file')} with other models (downloaded once)</span>` : ''}<a href="${esc(m.page)}" target="_blank" rel="noopener">Model page ↗</a>${m.fit && !['fits', 'cpu', 'unsupported'].includes(m.fit) ? `<span style="color:var(--warn)">${m.fit === 'tight' ? 'tight fit for your GPU' : 'too big for your GPU'}</span>` : ''}${m.engines?.length && S.state?.engine?.engine === 'vulkan' ? '<span style="color:var(--warn)">slower on Vulkan (about 1.5× slower than real time)</span>' : ''}</div>
+      ${m.installed && !m.runtime_ready && m.engine_ok && !(m.runtime_job && ['downloading', 'checking', 'installing'].includes(m.runtime_job.status)) ? `<div class="err-note">${m.runtime_job?.status === 'failed' ? `Its engine part didn't download: ${esc(m.runtime_job.error || '')}` : 'Its engine part for this graphics card is missing.'} <button class="btn xs" data-m="download" data-key="${m.key}">${icon('download')} Get it</button></div>` : ''}
+      ${m.installed && !m.engine_ok ? '<div class="err-note">Needs the NVIDIA · CUDA or AMD / Intel · Vulkan engine: switch to one on Setup.</div>' : ''}
       ${m.job?.status === 'failed' ? `<div class="err-note">${esc(m.job.error)}</div>` : ''}
     </div><div class="acts">${acts}</div></div>`;
 }
@@ -1372,7 +1378,7 @@ async function loadSettings() {
     <section class="card panel"><h2>Defaults for new scripts</h2>
       <div class="field"><label class="label">Voice</label><div class="select-wrap"><select class="select" data-set="default_voice">${voiceOptions(s.default_voice, { blank: 'None' })}</select>${icon('chevron')}</div></div>
       <div class="pair"><div class="field"><label class="label">Language</label><div class="select-wrap"><select class="select" data-set="default_language">${languageOptions(s.default_language)}</select>${icon('chevron')}</div></div>
-        <div class="field"><label class="label">Voice model</label><div class="select-wrap"><select class="select" data-set="default_model">${st.models.filter((m) => m.kind === 'voice').map((m) => `<option value="${m.key}"${m.key === s.default_model ? ' selected' : ''}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
+        <div class="field"><label class="label">Voice model</label><div class="select-wrap"><select class="select" data-set="default_model">${st.models.filter(speakable).map((m) => `<option value="${m.key}"${m.key === s.default_model ? ' selected' : ''}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
     </section>
     <section class="card panel"><h2>Speech</h2>
       <div class="pair"><div class="field"><label class="label">Speed</label><div class="select-wrap"><select class="select" data-set="speed">${[0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.15, 1.2].map((v) => `<option value="${v}"${Math.abs(v - (s.speed || 1)) < 0.001 ? ' selected' : ''}>${v}×${v === 1 ? ' natural' : ''}</option>`).join('')}</select>${icon('chevron')}</div></div>
@@ -1780,7 +1786,7 @@ async function loadAbout() {
       ${updatesPanel({ ...settings, version: a.version, installed: a.installed }, updFull)}
       <section class="card panel"><h2>Models and licences</h2>
         <p class="help">Everything here can be used in monetized videos and client work, unless it's marked otherwise.</p>
-        <div class="lic-list">${models.length ? models.map((m) => `<div class="lic-row"><span><b>${esc(m.label)}</b></span>
+        <div class="lic-list">${models.length ? models.map((m) => `<div class="lic-row"><span><b>${esc(m.label)}</b>${m.runtime === 's2' ? ' <span class="help">· Built with Fish Audio</span>' : ''}</span>
           <span class="license ${m.noncommercial ? 'nc' : 'ok'}">${m.noncommercial ? '' : icon('check')} ${esc(m.license)}</span></div>`).join('')
           : '<p class="help">No models downloaded yet. See <a href="#models">Models</a>.</p>'}</div>
         <div class="lic-row"><span><b>Fatima Voice Studio</b></span><span class="license ok">${icon('check')} MIT — free and open source</span></div>

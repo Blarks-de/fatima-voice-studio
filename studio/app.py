@@ -91,6 +91,7 @@ def create_app(cfg: dict) -> FastAPI:
                  asyncio.create_task(transcripts.run())]
         log.info("%s on http://%s:%s  (batches: %s)", APP_NAME, cfg["host"], cfg["port"], store.root)
         downloads.ensure_whisper_gpu()  # e.g. after an update: Whisper's graphics card build, if it's missing
+        downloads.ensure_s2_runtime()   # and s2.cpp, if an S2 Pro model is there without it
         if mcp:
             async with mcp.session_manager.run():  # MCP endpoint for AI agents at /mcp
                 yield
@@ -242,7 +243,8 @@ def create_app(cfg: dict) -> FastAPI:
         return {
             "engine": engine.status(),
             "models": [{"key": k, "label": m["label"], "short": m["short"], "kind": m["kind"], "installed": k in installed,
-                        "license": m["license"], "noncommercial": bool(m.get("noncommercial")), "languages": m.get("languages")}
+                        "license": m["license"], "noncommercial": bool(m.get("noncommercial")), "languages": m.get("languages"),
+                        "runtime": m.get("runtime", "llama")}
                        for k, m in config.MODELS.items()],
             "languages": config.LANGUAGES,
             "default_model": cfg["default_model"], "default_language": cfg["default_language"],
@@ -991,10 +993,12 @@ def create_app(cfg: dict) -> FastAPI:
 
     @app.post("/api/models/{key}/download")
     async def download_model(key: str):
+        if key not in config.MODELS:
+            raise HTTPException(404, "Unknown model")
         try:
             downloads.start(key)
-        except ValueError as e:
-            raise HTTPException(404, str(e))
+        except ValueError as e:  # e.g. S2 Pro without a CUDA or Vulkan engine
+            raise HTTPException(409, str(e))
         return downloads.status()
 
     @app.post("/api/models/{key}/cancel")
@@ -1093,6 +1097,7 @@ def create_app(cfg: dict) -> FastAPI:
                 cfg.pop("benchmark", None)  # the speed was measured on the old engine
                 config.save(cfg)
                 downloads.ensure_whisper_gpu()  # Whisper follows the engine onto its graphics card
+                downloads.ensure_s2_runtime()   # so does S2 Pro's s2.cpp
         elif action == "remove":
             if key == cfg["engine"]:
                 raise HTTPException(409, "That engine is in use. Switch to another one first.")

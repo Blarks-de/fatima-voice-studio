@@ -114,6 +114,28 @@ def whisper_dir() -> Path:
     return HOME / "engine" / "whisper"
 
 
+# The second voice engine: s2.cpp running Fish Audio S2 Pro, one build per graphics card engine (made by
+# .github/workflows/s2cpp.yml, release S2_RELEASE). The CUDA build loads cuBLAS/cudart from the voice engine's folder.
+# It comes with an S2 Pro model download. (url, size, sha256); size 0 = not published yet.
+S2_RELEASE = "s2cpp-2c33261"
+S2_EXE = "s2.exe"
+_S2 = f"{REPO_URL}/releases/download/{S2_RELEASE}/s2cpp-win-"
+S2_RUNTIME = {
+    "cuda": (_S2 + "cuda-13.4-x64.zip", 0, ""),
+    "vulkan": (_S2 + "vulkan-x64.zip", 0, ""),
+}
+
+
+def s2_dir(engine: str) -> Path:
+    return HOME / "engine" / f"s2-{engine}"
+
+
+def s2_engine(cfg: dict) -> str | None:
+    """The engine S2 Pro runs on: the one in use, if s2.cpp has a build for it and the engine is installed."""
+    key = cfg["engine"]
+    return key if key in S2_RUNTIME and (engine_dir(cfg, key) / ENGINE_EXE).exists() else None
+
+
 def whisper_gpu_dir(engine: str) -> Path:
     return HOME / "engine" / f"whisper-gpu-{engine}"
 
@@ -131,6 +153,7 @@ def installed_engines(cfg: dict) -> list[str]:
 HF = "https://huggingface.co/"
 _QWEN = HF + "ggml-org/Qwen3-TTS-12Hz-1.7B-Base-GGUF/resolve/main/"
 _WHISPER = HF + "ggerganov/whisper.cpp/resolve/main/"
+_S2PRO = HF + "rodrigomt/s2-pro-gguf/resolve/main/"  # S2 Pro as GGUF for s2.cpp (decoder kept in F16)
 # Every file a model can need (url, size, sha256); shared files are downloaded once.
 FILES = {
     "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf": (_QWEN + "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf", 1847874400,
@@ -139,6 +162,10 @@ FILES = {
                                              "8d18c94acb2addd042f97da63c98be144eafa76d0d9495177eab65130cf85129"),
     "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf": (_QWEN + "mmproj-Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf", 446422912,
                                                   "6fd65188839bcd6ecc91b277ad471e22a0edfada4699a0fe82f1165c18cfcce2"),
+    "s2-pro-q8_0.gguf": (_S2PRO + "s2-pro-q8_0.gguf", 5630037088,
+                         "e2043182234786e7b975547d3bbcb23ff02e4ff684b82f7fa851287e4cb4f267"),
+    "s2-pro-q6_k.gguf": (_S2PRO + "s2-pro-q6_k.gguf", 4525266528,
+                         "84ac904172a2cadb84e8f7f14ea3f1acef0584987635e85f7207fd254eafa235"),
     "ggml-base-q5_1.bin": (_WHISPER + "ggml-base-q5_1.bin", 59707625,
                            "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898"),
     "ggml-small-q5_1.bin": (_WHISPER + "ggml-small-q5_1.bin", 190085487,
@@ -172,6 +199,13 @@ def tool_dir(key: str) -> Path:
 LANGUAGES = {"en": "English", "es": "Spanish", "fr": "French", "de": "German", "it": "Italian",
              "pt": "Portuguese", "ru": "Russian", "ja": "Japanese", "ko": "Korean", "zh": "Chinese"}
 
+# What S2 Pro speaks (from its model card): it reads the language from the text itself.
+S2_LANGUAGES = ["zh", "en", "ja", "ko", "es", "pt", "ar", "ru", "fr", "de", "sv", "it", "tr", "no", "nl", "cy", "eu",
+                "ca", "da", "gl", "ta", "hu", "fi", "pl", "et", "hi", "la", "ur", "th", "vi", "jw", "bn", "yo", "sl",
+                "cs", "sw", "nn", "he", "ms", "uk", "id", "kk", "bg", "lv", "my", "tl", "sk", "ne", "fa", "af", "el",
+                "bo", "hr", "ro", "sn", "mi", "yi", "am", "be", "km", "is", "az", "sd", "br", "sq", "ps", "mn", "ht",
+                "ml", "sr", "sa", "te", "ka", "bs", "pa", "lt", "kn", "si", "hy", "mr", "as", "gu", "fo"]
+
 # kind "voice": speaks text (runs on the engine). kind "subtitles": whisper.cpp for SRT timings and transcripts.
 MODELS = {
     "qwen3-tts-q8": {
@@ -188,6 +222,24 @@ MODELS = {
         "languages": list(LANGUAGES), "vram_gb": 3.2,
         "about": "Same model, compressed further: for graphics cards with 4 GB or less, or CPU-only PCs. "
                  "Slightly less polished."},
+    # runtime "s2": spoken by s2.cpp (S2_RUNTIME), not llama.cpp; only on the engines listed. Parts are kept shorter
+    # (max_chars): the voice fades on long stretches. vram_gb is the peak measured on an RTX 5060 (8 GB).
+    "s2-pro-q8": {
+        "kind": "voice", "runtime": "s2", "engines": ["cuda", "vulkan"], "label": "Fish Audio S2 Pro · Q8",
+        "short": "S2 Pro · expressive, 80+ languages", "api_id": "s2-pro", "files": ["s2-pro-q8_0.gguf"],
+        "license": "Fish Audio Research License — non-commercial; commercial use needs a licence from Fish Audio",
+        "noncommercial": True, "page": HF + "fishaudio/s2-pro", "languages": S2_LANGUAGES, "vram_gb": 7.2,
+        "max_chars": 300,
+        "about": "Very expressive, with emotion tags like [whisper] or [excited] in the text, and 80+ languages. "
+                 "About real time on an NVIDIA card with 8 GB or more (half the speed of Qwen3-TTS); slower on Vulkan."},
+    "s2-pro-q6": {
+        "kind": "voice", "runtime": "s2", "engines": ["cuda", "vulkan"], "label": "Fish Audio S2 Pro · Q6",
+        "short": "S2 Pro · for 6-8 GB cards", "api_id": "s2-pro-q6", "files": ["s2-pro-q6_k.gguf"],
+        "license": "Fish Audio Research License — non-commercial; commercial use needs a licence from Fish Audio",
+        "noncommercial": True, "page": HF + "fishaudio/s2-pro", "languages": S2_LANGUAGES, "vram_gb": 6.2,
+        "max_chars": 300,
+        "about": "Same model, compressed a little further, for graphics cards with 6 to 8 GB. Emotion tags are a "
+                 "little weaker than in Q8."},
     # Subtitle timing only needs Whisper to find the words (the text comes from the script), so small is plenty;
     # the bigger ones are for transcribing audio you didn't write (the transcription API, the MCP transcribe tool).
     "whisper-base": {

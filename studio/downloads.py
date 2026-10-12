@@ -37,15 +37,32 @@ class Downloads:
     def _whisper_missing(self) -> bool:
         return not (config.whisper_dir() / config.WHISPER_EXE).exists()
 
+    def _s2_missing(self) -> str | None:
+        """The engine whose s2.cpp build an S2 Pro download still needs (None: it's there, or no engine can run it)."""
+        key = config.s2_engine(self.cfg)
+        return key if key and not (config.s2_dir(key) / config.S2_EXE).exists() else None
+
+    def _extra(self, m: dict) -> int:
+        """What a model's download also fetches: Whisper with the first Whisper model, s2.cpp with S2 Pro."""
+        if m["kind"] == "subtitles" and self._whisper_missing():
+            return config.WHISPER_ZIP[1]
+        if m.get("runtime") == "s2" and (key := self._s2_missing()):
+            return config.S2_RUNTIME[key][1]
+        return 0
+
     def status(self) -> list[dict]:
         installed = config.installed_models(self.cfg)
         out = []
         for key, m in config.MODELS.items():
-            extra = config.WHISPER_ZIP[1] if m["kind"] == "subtitles" and self._whisper_missing() else 0
+            extra = self._extra(m)
             out.append({
                 "key": key, "kind": m["kind"], "label": m["label"], "short": m["short"], "about": m["about"],
                 "license": m["license"], "noncommercial": bool(m.get("noncommercial")), "page": m["page"],
                 "installed": key in installed and not (m["kind"] == "subtitles" and self._whisper_missing()),
+                # S2 Pro needs a CUDA or Vulkan engine in use; "runtime_ready" says its s2.cpp build is there too
+                "engines": m.get("engines"), "engine_ok": not m.get("engines") or bool(config.s2_engine(self.cfg)),
+                "runtime_ready": m.get("runtime") != "s2" or (bool(config.s2_engine(self.cfg)) and not self._s2_missing()),
+                "runtime_job": self.jobs.get("s2-runtime:" + (config.s2_engine(self.cfg) or "")) if m.get("runtime") == "s2" else None,
                 "in_use": m["kind"] == "subtitles" and key == config.subtitles_model(self.cfg),
                 "size": sum(config.FILES[f][1] for f in config.model_files(key)),
                 "to_download": sum(config.FILES[f][1] for f in self.missing(key)) + extra,
@@ -63,6 +80,13 @@ class Downloads:
     def start(self, key: str) -> None:
         if key not in config.MODELS:
             raise ValueError("Unknown model")
+        m = config.MODELS[key]
+        if m.get("runtime") == "s2":
+            if not config.s2_engine(self.cfg):
+                raise ValueError(f"{m['label']} runs on the NVIDIA · CUDA or AMD / Intel · Vulkan engine. "
+                                 "Download one on Setup and use it, then download this model.")
+            if not config.S2_RUNTIME[config.s2_engine(self.cfg)][1]:
+                raise ValueError(f"{m['label']} isn't available to download yet.")
         self._launch(key, self._run(key))
 
     def _launch(self, key: str, coro) -> None:
@@ -85,7 +109,8 @@ class Downloads:
         job = self.jobs[key]
         files = self.missing(key)
         need_whisper = config.MODELS[key]["kind"] == "subtitles" and self._whisper_missing()
-        job["total"] = sum(config.FILES[f][1] for f in files) + (config.WHISPER_ZIP[1] if need_whisper else 0)
+        need_s2 = self._s2_missing() if config.MODELS[key].get("runtime") == "s2" else None
+        job["total"] = sum(config.FILES[f][1] for f in files) + self._extra(config.MODELS[key])
         try:
             self.folder.mkdir(parents=True, exist_ok=True)
             async with httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30, read=300)) as client:
@@ -94,13 +119,17 @@ class Downloads:
                     await self._fetch(client, url, size, sha, self.folder / name, job)
                 if need_whisper:
                     await self._install_zips(client, [config.WHISPER_ZIP], config.whisper_dir(), config.WHISPER_EXE, job)
+                if need_s2:
+                    await self._install_zips(client, [config.S2_RUNTIME[need_s2]], config.s2_dir(need_s2),
+                                             config.S2_EXE, job)
             job["status"] = "done"
             log.info("Downloaded %s", key)
             m = config.MODELS[key]
             if m["kind"] == "subtitles":
                 self.ensure_whisper_gpu()
-            if m["kind"] == "voice" and self.cfg["default_model"] not in config.installed_models(self.cfg):
-                self.cfg["default_model"] = key  # first voice model: make it the default
+            if (m["kind"] == "voice" and not m.get("noncommercial")
+                    and self.cfg["default_model"] not in config.installed_models(self.cfg)):
+                self.cfg["default_model"] = key  # first voice model: make it the default (never a non-commercial one)
                 config.save(self.cfg)
         except asyncio.CancelledError:
             job["status"] = "cancelled"  # the .part file stays, so the next download resumes
@@ -205,6 +234,7 @@ class Downloads:
                 self.cfg["engine"] = key
                 config.save(self.cfg)
             self.ensure_whisper_gpu()
+            self.ensure_s2_runtime()
         except asyncio.CancelledError:
             job["status"] = "cancelled"
         except Exception as e:
@@ -225,6 +255,9 @@ class Downloads:
         if key in config.WHISPER_GPU:  # its Whisper build can't run without it
             shutil.rmtree(config.whisper_gpu_dir(key), ignore_errors=True)
             self.jobs.pop("whisper-gpu:" + key, None)
+        if key in config.S2_RUNTIME:  # nor can its s2.cpp build
+            shutil.rmtree(config.s2_dir(key), ignore_errors=True)
+            self.jobs.pop("s2-runtime:" + key, None)
 
     # ---- Whisper on the graphics card (job key "whisper-gpu:<engine>") ----
 
@@ -264,6 +297,34 @@ class Downloads:
             job["status"] = "cancelled"
         except Exception as e:
             log.exception("Whisper for the graphics card (%s) failed to download", key)
+            job.update(status="failed", error=str(e) or e.__class__.__name__)
+
+    # ---- s2.cpp for S2 Pro (job key "s2-runtime:<engine>") ----
+
+    def ensure_s2_runtime(self) -> None:
+        """Fetch s2.cpp for the engine in use when an S2 Pro model is there but its build isn't (after switching or
+        reinstalling engines, or an update). Fails quietly; the model card's download brings it too."""
+        key = self._s2_missing()
+        if not key or not config.S2_RUNTIME[key][1] or self.busy("s2-runtime:" + key):
+            return
+        if not any(config.MODELS[k].get("runtime") == "s2" for k in config.installed_models(self.cfg)):
+            return
+        if (self.jobs.get("s2-runtime:" + key) or {}).get("status") in ("failed", "cancelled"):
+            return
+        self._launch("s2-runtime:" + key, self._run_s2_runtime(key))
+
+    async def _run_s2_runtime(self, key: str) -> None:
+        job = self.jobs["s2-runtime:" + key]
+        job["total"] = config.S2_RUNTIME[key][1]
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(30, read=300)) as client:
+                await self._install_zips(client, [config.S2_RUNTIME[key]], config.s2_dir(key), config.S2_EXE, job)
+            job["status"] = "done"
+            log.info("s2.cpp installed for %s", key)
+        except asyncio.CancelledError:
+            job["status"] = "cancelled"
+        except Exception as e:
+            log.exception("s2.cpp for %s failed to download", key)
             job.update(status="failed", error=str(e) or e.__class__.__name__)
 
     # ---- tools (job key "tool:<id>"), e.g. ffmpeg for video files ----

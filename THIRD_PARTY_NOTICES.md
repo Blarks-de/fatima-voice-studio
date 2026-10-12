@@ -63,6 +63,8 @@ and checks each file against its published SHA-256.
 | whisper.cpp (`whisper-cli`), incl. ggml | MIT | https://github.com/ggml-org/whisper.cpp |
 | whisper.cpp graphics card builds (CUDA 13.4, CUDA 12.4, Vulkan), built by this project from the same source | MIT | https://github.com/hassanxs/fatima-voice-studio/releases/tag/whisper-b5454 (they use the CUDA files of the engine download) |
 | Qwen3-TTS 12Hz 1.7B Base (GGUF, Q8 and Q4) | Apache 2.0 | https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base, GGUF by ggml-org |
+| Fish Audio S2 Pro (GGUF, Q8 and Q6), optional second voice model | Fish Audio Research License (non-commercial; commercial use needs a licence from Fish Audio). Built with Fish Audio. | https://huggingface.co/fishaudio/s2-pro, GGUF by rodrigomt (https://huggingface.co/rodrigomt/s2-pro-gguf) |
+| s2.cpp (S2 Pro engine, `s2.exe`), built by this project with pull requests #50-#52 and a seed option | Fish Audio Research License, incl. ggml (MIT) | https://github.com/rodrigomatta/s2.cpp; builds: https://github.com/hassanxs/fatima-voice-studio/releases/tag/s2cpp-2c33261 (LICENSE.md and NOTICE.txt inside; they use the CUDA files of the engine download) |
 | Whisper base, small, medium, large-v3 turbo, large-v3 (ggml) | MIT | https://huggingface.co/openai, ggml by ggerganov |
 | UVR MDX-Net Voc_FT voice separator (ONNX) | MIT (Ultimate Vocal Remover) | https://github.com/Anjok07/ultimatevocalremovergui, ONNX by k2-fsa/sherpa-onnx |
 | ffmpeg 9.0.2 "essentials" build (only if ffmpeg isn't already on the PC) | GPL-3.0, a separate program the app runs | https://github.com/GyanD/codexffmpeg (builds of https://ffmpeg.org) |

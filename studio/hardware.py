@@ -135,8 +135,11 @@ def recommended_engine(hw: dict) -> str:
 
 
 def model_fit(key: str, hw: dict, engine: str) -> str:
-    """'fits' (runs fully on the GPU), 'tight' (little room to spare), 'too_big' or 'cpu'."""
+    """'fits' (runs fully on the GPU), 'tight' (little room to spare), 'too_big', 'cpu', or 'unsupported' (a model
+    whose runtime has no build for this engine, like S2 Pro on the CPU)."""
     m = config.MODELS[key]
+    if m.get("engines") and engine not in m["engines"]:
+        return "unsupported"
     if m["kind"] != "voice" or not config.ENGINES[engine]["gpu"] or not main_gpu(hw):
         return "cpu"  # Whisper always runs on the CPU
     vram = main_gpu(hw)["vram_gb"]

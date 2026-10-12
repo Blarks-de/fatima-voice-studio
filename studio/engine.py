@@ -60,6 +60,8 @@ class Engine:
             return f"Unknown voice model: {model}"
         if model not in config.installed_models(self.cfg):
             return f"{config.MODELS[model]['label']} isn't downloaded. Open Models to download it."
+        if config.MODELS[model].get("runtime") == "s2":
+            return f"{config.MODELS[model]['label']} can't speak in this version yet. Use Qwen3-TTS for now."
         return None
 
     def cancel_current(self) -> None:
