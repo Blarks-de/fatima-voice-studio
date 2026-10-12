@@ -12,13 +12,17 @@ on:
         description: "s2.cpp commit to build"
         required: true
         default: "2c33261938da1a41d713768b1b391b4d368d7d2c"
+      prs:
+        description: "Pull requests to merge on top, as number@commit (space separated); empty for none"
+        required: false
+        default: "50@49bb869e2399555ab23be1d6ec4b8aa67c0b6a3c 51@f468f9d70e269855f67c2c7e0080071263edb40b 52@68ebea3f66e143ad58e326d11aee2b1817c1ae9c"
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: s2.cpp ${{ matrix.backend }}
+    name: s2.cpp ${{ matrix.backend }}${{ inputs.prs != '' && ' + PRs' || '' }}
     runs-on: windows-2022
     strategy:
       fail-fast: false
@@ -37,6 +41,23 @@ jobs:
           repository: rodrigomatta/s2.cpp
           ref: ${{ inputs.ref }}
           submodules: recursive
+          fetch-depth: 0
+
+      # #50 faster generation (flash attention, CUDA graphs), #51 single-pass offline codec decode, #52 CUDA fixes and
+      # a faster im2col. Each at a fixed commit, so a build always contains the same code.
+      - name: Merge pull requests
+        if: inputs.prs != ''
+        shell: pwsh
+        run: |
+          foreach ($p in "${{ inputs.prs }}".Split(" ", [StringSplitOptions]::RemoveEmptyEntries)) {
+            $num, $sha = $p.Split("@")
+            git fetch --no-tags origin $sha
+            if ($LASTEXITCODE) { throw "Couldn't fetch PR #$num at $sha" }
+            git -c user.name=build -c user.email=build@localhost merge --no-edit $sha
+            if ($LASTEXITCODE) { throw "PR #$num doesn't merge cleanly" }
+            Write-Host "Merged PR #$num ($sha)"
+          }
+          git submodule update --init --recursive
 
       # The same CUDA components and versions as llama.cpp's Windows builds of the voice engine (b11476).
       - name: Install CUDA 13.4
