@@ -1,4 +1,4 @@
-"""Runs llama-tts.exe (llama.cpp) once per segment and reports its progress.
+"""Runs llama-tts.exe (llama.cpp) once per segment and reports its progress; S2 Pro parts go to s2engine.
 
 llama.cpp has no "stay loaded" mode for speech yet, so every segment starts the engine, loads the model
 (about 5 s on an NVIDIA GPU, the files stay in the Windows file cache after the first time), speaks the text and
@@ -14,7 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import config, runtime, text as textmod
+from . import config, runtime, s2engine, text as textmod
 
 log = logging.getLogger("studio.engine")
 
@@ -45,11 +45,14 @@ class Engine:
         self._lock = asyncio.Lock()
         self._cancel = False
         self._job = _KillOnCloseJob() if sys.platform == "win32" else None
+        self.s2 = s2engine.S2Server(cfg, self._job)  # the second engine (S2 Pro), loaded only while it's used
+        self._s2_active = False
 
     def status(self) -> dict:
         return {"state": self.state, "error": self.error, "engine": self.cfg["engine"],
                 "installed": config.installed_engines(self.cfg),
-                "frames": self.frames, "frames_expected": self.frames_expected,
+                "frames": self.s2.frames if self._s2_active else self.frames, "frames_expected": self.frames_expected,
+                "s2_loaded": self.s2.running(),
                 "elapsed": round(time.monotonic() - self.started, 1) if self.state == "busy" else None}
 
     def ready_problem(self, model: str) -> str | None:
@@ -61,11 +64,17 @@ class Engine:
         if model not in config.installed_models(self.cfg):
             return f"{config.MODELS[model]['label']} isn't downloaded. Open Models to download it."
         if config.MODELS[model].get("runtime") == "s2":
-            return f"{config.MODELS[model]['label']} can't speak in this version yet. Use Qwen3-TTS for now."
+            engine = config.s2_engine(self.cfg)
+            if not engine:
+                return (f"{config.MODELS[model]['label']} runs on the NVIDIA · CUDA or AMD / Intel · Vulkan engine. "
+                        "Switch to one on Setup.")
+            if not (config.s2_dir(engine) / config.S2_EXE).exists():
+                return f"{config.MODELS[model]['label']}'s engine part is missing. Open Models and click Get it."
         return None
 
     def cancel_current(self) -> None:
         self._cancel = True
+        self.s2.cancel()
         proc = self.proc
         if proc and proc.poll() is None:
             proc.kill()
@@ -79,7 +88,10 @@ class Engine:
             self._cancel = False
             started = time.monotonic()
             try:
-                await asyncio.to_thread(self._run, model, text, language, voice, seed, out)
+                if config.MODELS[model].get("runtime") == "s2":
+                    await asyncio.to_thread(self._run_s2, model, text, voice, seed, out)
+                else:
+                    await asyncio.to_thread(self._run, model, text, language, voice, seed, out)
             except Cancelled:
                 self.state = "idle"
                 raise
@@ -89,7 +101,25 @@ class Engine:
             self.state, self.error = "idle", None
             return time.monotonic() - started
 
+    def _run_s2(self, model: str, text: str, voice: Path | None, seed: int, out: Path) -> None:
+        self.state, self.frames, self.started = "busy", 0, time.monotonic()
+        self.frames_expected = int(textmod.estimate_seconds(text) * s2engine.FRAME_RATE)
+        self._s2_active = True
+        try:
+            self.s2.speak(model, text, Path(voice).resolve() if voice else None, seed, Path(out).resolve())
+        except s2engine.S2Cancelled:
+            raise Cancelled()
+        except s2engine.S2Error as e:
+            raise EngineError(str(e))
+        finally:
+            self._s2_active = False
+        if self._cancel:
+            Path(out).unlink(missing_ok=True)
+            raise Cancelled()
+
     def _run(self, model: str, text: str, language: str, voice: Path | None, seed: int, out: Path) -> None:
+        if self.s2.running():
+            self.s2.stop()  # S2 Pro and Qwen3-TTS won't both fit on an 8 GB card
         m = config.MODELS[model]
         models_dir = Path(self.cfg["models_dir"]).resolve()
         out = Path(out).resolve()  # the engine runs in its own folder

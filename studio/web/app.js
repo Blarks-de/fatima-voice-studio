@@ -1213,8 +1213,8 @@ document.addEventListener('click', run(async (e) => {
   setTimeout(loadModels, 300);
 }));
 
-// Voice models the app can speak with now (S2 Pro's engine comes in the next step of its integration).
-const speakable = (m) => m.kind === 'voice' && m.runtime !== 's2';
+// Voice models to pick from: all of them (S2 Pro shows its own limits on Models and when it can't run).
+const speakable = (m) => m.kind === 'voice';
 function modelCard(m) {
   const busy = m.job && ['downloading', 'checking', 'installing'].includes(m.job.status);
   let acts;

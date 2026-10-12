@@ -100,6 +100,7 @@ def create_app(cfg: dict) -> FastAPI:
         for t in tasks:
             t.cancel()
         engine.cancel_current()
+        engine.s2.stop()
 
     app = FastAPI(title=APP_NAME, version=__version__, lifespan=lifespan,
                   description="OpenAI-compatible text-to-speech and transcription on this PC, plus batches of scripts. "
@@ -1252,7 +1253,9 @@ def create_app(cfg: dict) -> FastAPI:
         """How a script would be split into segments, and roughly how long it is (for the Create page)."""
         body = await request.json()
         text = str(body.get("text") or "")[:MAX_TEXT]
-        parts = textmod.split(text, **{k: body.get(k, cfg[k]) for k in ("max_chars", "pause_segment", "pause_paragraph")})
+        split = {k: body.get(k, cfg[k]) for k in ("max_chars", "pause_segment", "pause_paragraph")}
+        split["max_chars"] = config.part_chars(body.get("model") or cfg["default_model"], split["max_chars"])
+        parts = textmod.split(text, **split)
         return {"segments": len(parts), "chars": len(text), "estimate_s": round(textmod.estimate_seconds(text)),
                 "pauses_s": round(sum(p["pause_after"] for p in parts), 1),
                 "parts": [{"text": p["text"][:80], "pause_after": p["pause_after"]} for p in parts[:200]]}

@@ -276,7 +276,9 @@ class Worker:
     async def speech(self, text: str, *, voice: str | None, language: str, model: str, seed: int | None = None,
                      loudness: float | None = -16.0, speed: float = 1.0, spell_numbers: bool | None = None) -> tuple[np.ndarray, int]:
         """Speak any length of text right now (ahead of batches) and return the audio. For the API and previews."""
-        parts = textmod.split(text, **{k: self.cfg[k] for k in ("max_chars", "pause_segment", "pause_paragraph")})
+        split = {k: self.cfg[k] for k in ("max_chars", "pause_segment", "pause_paragraph")}
+        split["max_chars"] = config.part_chars(model, split["max_chars"])
+        parts = textmod.split(text, **split)
         numbers = self.cfg.get("spell_numbers", True) if spell_numbers is None else spell_numbers
         for p in parts:
             p["text"] = self.spoken_text(p["text"], {"language": language, "spell_numbers": numbers})

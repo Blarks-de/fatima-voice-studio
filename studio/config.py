@@ -284,6 +284,11 @@ def model_page(key: str) -> str:
     return MODELS[key]["page"]
 
 
+def part_chars(model: str | None, max_chars: int) -> int:
+    """Longest part for this voice model: the setting, or less for models whose voice fades on long stretches."""
+    return min(int(max_chars), int((MODELS.get(model) or {}).get("max_chars") or max_chars))
+
+
 def voice_models() -> list[str]:
     return [k for k, m in MODELS.items() if m["kind"] == "voice"]
 

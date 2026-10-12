@@ -17,7 +17,7 @@ import uuid
 from collections import Counter
 from pathlib import Path
 
-from . import text as textmod
+from . import config, text as textmod
 from .trash import to_recycle_bin
 
 INVALID_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -147,7 +147,9 @@ class Store:
     def _make_items(self, b: dict, script: dict, reuse: dict | None = None) -> list[dict]:
         """Split a script into queued segments. `reuse`: {(text, voice, language): old item} whose audio can be kept."""
         s = settings_for(b, script)
-        parts = textmod.split(script["text"], **{k: b["settings"][k] for k in SPLIT_KEYS})
+        split = {k: b["settings"][k] for k in SPLIT_KEYS}
+        split["max_chars"] = config.part_chars(s.get("model"), split["max_chars"])  # S2 Pro: shorter parts
+        parts = textmod.split(script["text"], **split)
         if not parts:
             raise ValueError(f"Script {script['n']} has no text to speak.")
         # Each script gets its own seed range; a script with a seed of its own starts exactly there.
