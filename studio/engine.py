@@ -88,7 +88,7 @@ class Engine:
             self.state, self.error = "error", problem
             raise EngineError(problem)
         async with self._lock:
-            self._cancel = False
+            self._cancel = self.s2._cancel = False  # a Stop from here on counts, even while S2 Pro waits or loads
             started = time.monotonic()
             try:
                 if config.MODELS[model].get("runtime") == "s2":

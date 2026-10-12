@@ -9,10 +9,13 @@ Other words in square brackets are tags for voice models that act on them (S2 Pr
 [low voice]...): sent to those as written, left out everywhere else (other models, subtitles, estimates).
 """
 import re
+import unicodedata
 
 PAUSE_TAG = re.compile(r"\[\s*pause(?:\s+(\d+(?:[.,]\d+)?)\s*(ms|s|sec|seconds?)?)?\s*\]", re.I)
-SENTENCE_END = re.compile(r"(?<=[.!?…。！？])[\"'”’»)\]]*\s+")
-CLAUSE_END = re.compile(r"(?<=[,;:—–])\s+")
+# Chinese and Japanese put no space after a full stop or comma; their closing quotes stay with the sentence.
+SENTENCE_END = re.compile(r"(?<=[.!?…])[\"'”’»)\]]*\s+|(?<=[。！？])(?![」』”’）)\]。！？])\s*|(?<=[。！？][」』”’）)\]])\s*")
+CLAUSE_END = re.compile(r"(?<=[,;:—–])\s+|(?<=[、，；：])\s*")
+NO_SPACE = re.compile(r"[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]")  # written without spaces
 TAG = re.compile(r"\[(?!\s*pause\b)[^\[\]\n]{1,60}\]", re.I)  # [whisper], not [pause 2]
 MIN_SEGMENT = 40  # characters: shorter sentences are joined to their neighbour when they fit
 
@@ -33,26 +36,56 @@ def clean(text: str) -> str:
     return text.strip()
 
 
+def width(text: str) -> int:
+    """Room on screen: Chinese, Japanese and Korean characters take two letters' worth."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+
+
+SLOW = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")  # Chinese characters and kana: about three letters' worth of speech each
+
+
+def spoken(text: str) -> int:
+    """Length for sizing parts and estimating time: like width(), but a Chinese character or kana counts three."""
+    return width(text) + len(SLOW.findall(text))
+
+
+def glue(a: str, b: str) -> str:
+    """Join two pieces of a script: with a space, except where the writing uses none (Chinese, Japanese)."""
+    if not a or not b:
+        return a or b
+    return a + b if NO_SPACE.match(a[-1]) or NO_SPACE.match(b[0]) else f"{a} {b}"
+
+
 def _split_long(sentence: str, limit: int) -> list[str]:
-    """A sentence longer than the limit: split at commas/semicolons, else between words."""
-    if len(sentence) <= limit:
+    """A sentence longer than the limit: split at commas/semicolons, else between words (or characters)."""
+    if spoken(sentence) <= limit:
         return [sentence]
     out, cur = [], ""
     for part in CLAUSE_END.split(sentence):
-        if len(part) > limit:  # no punctuation to split at: cut between words
-            words = part.split(" ")
+        if spoken(part) > limit:  # no punctuation to split at: cut between words
+            words = [w for w in part.split(" ") if w]
             for w in words:
-                if cur and len(cur) + 1 + len(w) > limit:
+                while spoken(w) > limit:  # one long run without spaces
+                    k, n = 0, 0
+                    while k < len(w) and n + spoken(w[k]) <= limit:
+                        n += spoken(w[k])
+                        k += 1
+                    if cur:
+                        out.append(cur)
+                        cur = ""
+                    out.append(w[:k])
+                    w = w[k:]
+                if cur and spoken(glue(cur, w)) > limit:
                     out.append(cur)
                     cur = w
                 else:
-                    cur = f"{cur} {w}".strip()
+                    cur = glue(cur, w)
             continue
-        if cur and len(cur) + 1 + len(part) > limit:
+        if cur and spoken(glue(cur, part)) > limit:
             out.append(cur)
             cur = part
         else:
-            cur = f"{cur} {part}".strip()
+            cur = glue(cur, part)
     if cur:
         out.append(cur)
     return out
@@ -67,19 +100,19 @@ def _pack(paragraph: str, limit: int) -> list[str]:
     parts = [p for s in sentences(paragraph) for p in _split_long(s, limit)]
     if not parts:
         return []
-    total = sum(len(p) + 1 for p in parts)
+    total = sum(spoken(p) + 1 for p in parts)
     # Aim for evenly sized chunks rather than full ones followed by a stub.
     target = min(limit, max(MIN_SEGMENT, total / max(1, -(-total // limit))))
     out, cur = [], ""
     for p in parts:
-        if cur and (len(cur) + 1 + len(p) > limit or len(cur) >= target):
+        if cur and (spoken(glue(cur, p)) > limit or spoken(cur) >= target):
             out.append(cur)
             cur = p
         else:
-            cur = f"{cur} {p}".strip()
+            cur = glue(cur, p)
     if cur:
-        if out and len(cur) < MIN_SEGMENT and len(out[-1]) + 1 + len(cur) <= limit:
-            out[-1] = f"{out[-1]} {cur}"
+        if out and spoken(cur) < MIN_SEGMENT and spoken(glue(out[-1], cur)) <= limit:
+            out[-1] = glue(out[-1], cur)
         else:
             out.append(cur)
     return out
@@ -128,4 +161,4 @@ def strip_tags(text: str) -> str:
 
 def estimate_seconds(text: str) -> float:
     """Rough speaking time: about 14 characters per second across our languages (tags aren't spoken)."""
-    return len(re.sub(PAUSE_TAG, "", strip_tags(text))) / 14.0
+    return spoken(re.sub(PAUSE_TAG, "", strip_tags(text))) / 14.0

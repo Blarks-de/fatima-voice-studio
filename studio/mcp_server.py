@@ -67,12 +67,22 @@ class Studio:
             raise ValueError(f"No batch called {ref!r}. Use list_batches to see names.")
         return await self.call("GET", f"/api/batches/{hit['id']}")
 
-    async def model(self, name: str | None) -> str | None:
-        """Resolve a model name to its key, refusing non-commercial ones unless allowed."""
-        if not name:
-            return None
+    async def model(self, name: str | None, preset: str | None = None) -> str | None:
+        """Resolve a model name to its key, refusing non-commercial ones unless allowed. Without a name, the model
+        the preset or Settings would pick is checked the same way (None: keep that choice)."""
         state = await self.call("GET", "/api/state")
         models = [m for m in state["models"] if m["installed"] and m["kind"] == "voice"]
+        if not name:
+            p = next((p for p in await self.call("GET", "/api/presets") if preset and
+                      preset.lower() in (p["id"], p["name"].lower())), None)
+            key = (p and p["settings"].get("model")) or state["default_model"]
+            hit = next((m for m in state["models"] if m["key"] == key), None)
+            if hit and hit["noncommercial"] and not (await self.settings()).get("agents_noncommercial"):
+                ok = [m["key"] for m in models if not m["noncommercial"]]
+                raise ValueError(f"{hit['label']} is the {"preset's" if p else 'default'} voice model and has a "
+                                 "non-commercial licence agents aren't allowed to use (Connect page). Pass model="
+                                 f"{' or '.join(ok) or 'a commercial model'}.")
+            return None
         n = name.lower()
         hit = next((m for m in models if n in (m["key"], m["label"].lower())), None) \
             or next((m for m in models if n in m["label"].lower() or n in m["key"]), None)
@@ -253,7 +263,7 @@ def build(base: str, api_key, *, host_port: int | None = None) -> FastMCP:
         (up to 15 minutes), else the batch to wait on."""
         voice_id = await studio.voice(voice) if voice else None
         r = await studio.call("POST", "/api/singles", json={"text": text, "settings": batch_settings(
-            voice_id, language, None, seed, None, None, None, speed, preset)})
+            voice_id, language, await studio.model(None, preset), seed, None, None, None, speed, preset)})
         bid, n = r["batch"]["id"], r["script"]["n"]
         if not wait:
             return {"batch": r["batch"]["name"], "script": n, "status": "queued", "note": "Use wait_for_batch."}
@@ -285,7 +295,7 @@ def build(base: str, api_key, *, host_port: int | None = None) -> FastMCP:
             if s.get("voice"):
                 s["voice"] = await studio.voice(s["voice"])
             out.append({k: s[k] for k in ("text", "title", "voice", "language") if s.get(k)})
-        settings = batch_settings(await studio.voice(voice) if voice else None, language, await studio.model(model),
+        settings = batch_settings(await studio.voice(voice) if voice else None, language, await studio.model(model, preset),
                                   seed, loudness, formats, subtitles, speed, preset)
         b = await studio.call("POST", "/api/batches", json={"name": name, "scripts": out, "settings": settings})
         return {"id": b["id"], "name": b["name"], "scripts": b["scripts_total"], "parts": b["total"], "folder": b["folder"],

@@ -2,8 +2,9 @@
 
 The server is started once with the model and stays loaded (the start costs about 5 s), so each part is one
 POST /generate: the text, the voice's clip and its transcript (s2.cpp clones a voice from both), a seed and a length
-cap. The transcript is made once with Whisper and kept in the voice's voice.json. The server is stopped after a few
-idle minutes, before Qwen3-TTS runs (both won't fit on an 8 GB card), and when the app closes.
+cap (with Vulkan, in pieces of about 10 s: see VULKAN_PIECE). The transcript is made once with Whisper and kept in
+the voice's voice.json. The server is stopped after a few idle minutes, before Qwen3-TTS runs (both won't fit on an
+8 GB card), when a part is stopped, and when the app closes.
 """
 import contextlib
 import http.client
@@ -18,6 +19,9 @@ import time
 import uuid
 from pathlib import Path
 
+import numpy as np
+import soundfile as sf
+
 from . import config, hardware, runtime, subtitles, text as textmod
 
 log = logging.getLogger("studio.s2engine")
@@ -26,9 +30,14 @@ FRAME_RATE = 44100 / 2048  # S2 Pro's codec frames per second of audio
 IDLE_STOP_S = 300          # free the graphics card after this long without a part
 SHARE_GB = 12              # below this much graphics memory, S2 Pro and Whisper take turns on the card
 START_TIMEOUT_S = 240
+# The codec turns a whole request into audio in one go and its working memory grows with the length: with Vulkan,
+# 15 s don't fit beside the Q8 model on an 8 GB card. There a part is spoken in pieces of this size (about 10 s).
+VULKAN_PIECE = 120
 PROGRESS = re.compile(r"\[Generate\]\s+(\d+)\s*/\s*(\d+)\s+tokens")
 VK_DEVICE = re.compile(r"ggml_vulkan: (\d+) = .*?\| uma: (\d)")  # uma 1 = built into the processor
 CRLF = bytes([13, 10])  # multipart line break
+NOISE = re.compile(r"CUDA Graph id \d+ reused")  # ggml's CUDA build says this for every step
+MAX_LOG = 2_000_000  # bytes: s2.log is started afresh (the old one kept as s2.old.log) when it's bigger
 
 
 class S2Error(Exception):
@@ -58,6 +67,7 @@ class S2Server:
         self._ready = threading.Event()
         self._uma: dict[int, bool] = {}
         self._conn: http.client.HTTPConnection | None = None
+        self._frames_before = 0     # frames of the part's earlier pieces (progress)
         self._cancel = False
         self._lock = threading.RLock()  # re-entrant: a part's voice transcript runs Whisper through gpu_turn
         self._held = 0
@@ -146,6 +156,11 @@ class S2Server:
         self._ready.clear()
         self._uma = {}
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if self.log_path.stat().st_size > MAX_LOG:
+                self.log_path.replace(self.log_path.with_name("s2.old.log"))
+        except OSError:  # no log yet, or the last server's output is still being written
+            pass
         log.info("Starting the S2 Pro server (%s, %s)", config.MODELS[model]["label"], engine)
         self.proc = subprocess.Popen(args, cwd=folder, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -156,6 +171,9 @@ class S2Server:
         while time.monotonic() < deadline:
             if self._ready.wait(0.5):
                 break
+            if self._cancel:  # Stop while loading: don't make it wait for the model
+                self.stop()
+                raise S2Cancelled()
             if self.proc.poll() is not None:
                 raise S2Error(self._start_problem())
         else:
@@ -179,14 +197,15 @@ class S2Server:
         """The server's output: to s2.log, and the bits the app watches (ready, devices, progress)."""
         with open(self.log_path, "a", encoding="utf-8", errors="replace") as logf:
             for raw in proc.stdout:
-                line = raw.decode("utf-8", "replace").rstrip()
-                logf.write(line + "\n")
+                line = NOISE.sub("", raw.decode("utf-8", "replace")).rstrip()
+                if line:
+                    logf.write(line + "\n")
                 if "Server starting on" in line:
                     self._ready.set()
                 elif m := VK_DEVICE.search(line):
                     self._uma[int(m[1])] = m[2] == "1"
                 elif m := PROGRESS.search(line):
-                    self.frames = int(m[1])
+                    self.frames = self._frames_before + int(m[1])
             logf.flush()
 
     def _start_problem(self) -> str:
@@ -204,17 +223,16 @@ class S2Server:
     # ---- speaking ----
 
     def cancel(self) -> None:
+        """Stop the part being spoken now. s2.cpp finishes a request even when the app hangs up, so the server is
+        ended (the next part starts it again): the graphics card is free at once and nothing queues behind it."""
         self._cancel = True
-        conn = self._conn
-        if conn is not None and conn.sock is not None:
-            try:  # cut the request now: the server stops generating when it goes away
-                conn.sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
+        proc = self.proc
+        if self._conn is not None and proc and proc.poll() is None:
+            log.info("Stopping the S2 Pro server: the part was stopped")
+            proc.kill()
 
     def _post(self, fields: dict, files: dict, dest: Path) -> None:
-        """POST /generate as multipart over a connection this object can cut (http.client: a socket we hold, so
-        Stop doesn't wait for the part to finish; the server sends nothing until the audio is ready)."""
+        """POST /generate as multipart (the server sends nothing until the audio is ready; Stop ends the server)."""
         boundary = uuid.uuid4().hex
         body = bytearray()
         for name, value in fields.items():
@@ -249,11 +267,38 @@ class S2Server:
                 self._held -= 1
 
     def _speak(self, model: str, text: str, voice: Path | None, seed: int, out: Path) -> None:
-        self._cancel = False
+        if self._cancel:  # Stop while waiting for the graphics card (the engine clears this when a part starts)
+            raise S2Cancelled()
         ref = (voice, transcript(self.cfg, voice)) if voice else None  # before the server takes the card
         self.ensure(model)
         if self._cancel:
             raise S2Cancelled()
+        pieces = _pieces(text) if self.loaded[1] == "vulkan" else [text]
+        out = Path(out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.unlink(missing_ok=True)
+        tmps = [out.with_name(f"{out.name}.{k}.part") for k in range(len(pieces))]
+        self.frames = self._frames_before = 0
+        try:
+            for piece, tmp in zip(pieces, tmps):
+                if self._cancel:  # Stop between two pieces
+                    raise S2Cancelled()
+                self._generate(piece, ref, seed, tmp)
+                self._frames_before += round(sf.info(str(tmp)).frames / 2048)
+            if len(tmps) == 1:
+                tmps[0].replace(out)
+            else:  # one part, as if spoken in one go
+                sr = sf.info(str(tmps[0])).samplerate
+                sf.write(str(out), _join([sf.read(str(t), dtype="float32")[0] for t in tmps], sr), sr, subtype="FLOAT")
+        finally:
+            for tmp in tmps:
+                tmp.unlink(missing_ok=True)
+            self.last_used = time.monotonic()
+        if self._cancel:
+            out.unlink(missing_ok=True)
+            raise S2Cancelled()
+
+    def _generate(self, text: str, ref: tuple | None, seed: int, dest: Path) -> None:
         expected = textmod.estimate_seconds(text) * FRAME_RATE
         params = {"seed": int(seed) % 2**31, "max_new_tokens": int(min(4096, expected * 3 + 150))}
         fields = {"text": text, "params": json.dumps(params)}
@@ -261,16 +306,9 @@ class S2Server:
         if ref:
             fields["reference_text"] = ref[1]
             files["reference"] = ("voice.wav", Path(ref[0]).read_bytes(), "audio/wav")
-        self.frames = 0
-        out = Path(out)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.unlink(missing_ok=True)
-        tmp = out.with_name(out.name + ".part")
         try:
-            self._post(fields, files, tmp)
-            tmp.replace(out)
+            self._post(fields, files, dest)
         except (OSError, http.client.HTTPException) as e:
-            tmp.unlink(missing_ok=True)
             if self._cancel:
                 raise S2Cancelled()
             try:  # a dropped connection is usually the server going down: give Windows a moment to say so
@@ -281,11 +319,30 @@ class S2Server:
                 self.stop()
                 raise S2Error("S2 Pro stopped while speaking. It starts again for the next part.") from e
             raise S2Error(f"S2 Pro couldn't speak this part: {e}") from e
-        finally:
-            self.last_used = time.monotonic()
-        if self._cancel:
-            out.unlink(missing_ok=True)
-            raise S2Cancelled()
+
+
+def _pieces(text: str) -> list[str]:
+    """A part cut at sentences into pieces of about VULKAN_PIECE; a few words left over join their neighbour."""
+    out: list[str] = []
+    for piece in textmod._pack(text, VULKAN_PIECE):
+        if out and (textmod.spoken(piece) < textmod.MIN_SEGMENT or textmod.spoken(out[-1]) < textmod.MIN_SEGMENT):
+            out[-1] = textmod.glue(out[-1], piece)
+        else:
+            out.append(piece)
+    return out
+
+
+def _join(clips: list[np.ndarray], sr: int) -> np.ndarray:
+    """The pieces of a part back to back, at the same speaking level (each request comes out a little louder or
+    quieter: up to 3 dB, which is heard where they meet)."""
+    def level(a: np.ndarray) -> float:
+        n = sr // 20
+        rms = np.sqrt(np.mean(a[:len(a) // n * n].reshape(-1, n) ** 2, axis=1)) if len(a) >= n else np.zeros(1)
+        speech = rms[rms > rms.max() * 0.1]  # the 50 ms windows with speech, not the pauses
+        return float(np.sqrt(np.mean(speech ** 2))) if len(speech) else 0.0
+    levels = [level(c) for c in clips]
+    target = float(np.median([x for x in levels if x > 0] or [1.0]))
+    return np.concatenate([c * float(np.clip(target / x, 0.5, 2.0)) if x > 0 else c for c, x in zip(clips, levels)])
 
 
 def transcript(cfg: dict, clip: Path) -> str:

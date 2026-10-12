@@ -7,6 +7,9 @@ The app shows the entries for versions newer than yours on Settings → Updates.
 - Language lists show what the chosen voice model speaks, and a model is told plainly when it doesn't speak a language.
 - Words in [square brackets] other than [pause] are tags: never read aloud and never in the subtitles. (Qwen3-TTS skips them.)
 - Voices remember what their clip says (Edit dialog), which S2 Pro uses to copy the voice.
+- Chinese and Japanese: scripts are split into sentences and parts properly (a long script was spoken as one huge part), and subtitles are timed line by line instead of one block.
+- Subtitles split long sentences into even pieces, without a few leftover words on their own.
+- AI agents can't reach a non-commercial model through a preset or the default model either, unless you allow it on the Connect page.
 
 ## 0.2.6
 - Updates moved to the About page (menu at the top right), next to your version. The update dot and messages point there.

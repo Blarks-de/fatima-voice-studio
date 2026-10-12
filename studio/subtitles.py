@@ -22,14 +22,29 @@ from . import config, runtime, text as textmod
 
 log = logging.getLogger("studio.subtitles")
 
-MAX_LINE = 42      # characters per subtitle line
+MAX_LINE = 42      # characters per subtitle line (Chinese, Japanese and Korean characters count double)
 MAX_CUE_CHARS = 84  # two lines
+# Chinese and Japanese have no spaces: each character is a "word" for matching and timing (punctuation stays with it).
+_CJK = "\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+_TOKEN = re.compile(rf"[{_CJK}][^\w\s]*|[^\s{_CJK}]+")
 MAX_CUE_SECONDS = 7.0
 MIN_CUE_SECONDS = 0.8
 
 
 class WhisperError(Exception):
     pass
+
+
+def _tokens(text: str) -> list[str]:
+    """The words of a text: split at spaces, and every Chinese or Japanese character on its own."""
+    return _TOKEN.findall(text)
+
+
+def _join(words: list[str]) -> str:
+    out = ""
+    for w in words:
+        out = textmod.glue(out, w)
+    return out
 
 
 def _norm(word: str) -> str:
@@ -179,6 +194,16 @@ def whisper_words(result: dict) -> list[tuple[str, float, float]]:
             if t.startswith("[_") or not t.strip():
                 continue
             start, end = tok["offsets"]["from"] / 1000, tok["offsets"]["to"] / 1000
+            if re.search(f"[{_CJK}]", t):  # one word per character, the token's time shared out between them
+                pieces = _tokens(t)
+                for k, piece in enumerate(pieces):
+                    s, e = start + (end - start) * k / len(pieces), start + (end - start) * (k + 1) / len(pieces)
+                    if words and not _norm(piece):  # punctuation
+                        words[-1][0] += piece
+                        words[-1][2] = e
+                    else:
+                        words.append([piece, s, e])
+                continue
             if t.startswith(" ") or not words:
                 words.append([t.strip(), start, end])
             else:
@@ -199,23 +224,35 @@ def _script_units(script: str) -> list[list[str]]:
     clean = textmod.PAUSE_TAG.sub(" ", textmod.strip_tags(textmod.clean(script)))  # subtitles show what's said
     for paragraph in clean.split("\n\n"):
         for sentence in textmod.sentences(paragraph):
-            words = sentence.split()
-            if len(sentence) <= MAX_CUE_CHARS:
+            words = _tokens(sentence)
+            if textmod.width(sentence) <= MAX_CUE_CHARS:
                 units.append(words)
                 continue
-            # Split long sentences at commas where possible, else between words, into <= MAX_CUE_CHARS pieces.
-            cur: list[str] = []
+            # Split long sentences at commas where possible, then what is still too long into even pieces.
+            clauses, cur = [], []
             for w in words:
-                if cur and len(" ".join(cur + [w])) > MAX_CUE_CHARS:
-                    units.append(cur)
-                    cur = []
                 cur.append(w)
-                if re.search(r"[,;:]$", w) and len(" ".join(cur)) > MAX_CUE_CHARS * 0.45:
-                    units.append(cur)
+                if re.search(r"[,;:、，；：]$", w) and textmod.width(_join(cur)) > MAX_CUE_CHARS * 0.45:
+                    clauses.append(cur)
                     cur = []
-            if cur:
-                units.append(cur)
+            for clause in clauses + [cur]:
+                units += _even(clause)
     return [u for u in units if u]
+
+
+def _even(words: list[str]) -> list[list[str]]:
+    """Words too long for one subtitle, cut between words into even pieces (not a full one and a stub)."""
+    size = textmod.width(_join(words))
+    if size <= MAX_CUE_CHARS:
+        return [words]
+    limit = min(MAX_CUE_CHARS, size / -(-size // MAX_CUE_CHARS) * 1.1)
+    out, cur = [], []
+    for w in words:
+        if cur and textmod.width(_join(cur + [w])) > limit:
+            out.append(cur)
+            cur = []
+        cur.append(w)
+    return out + [cur]
 
 
 def _word_times(script_words: list[str], heard: list[tuple[str, float, float]]) -> list[tuple[float, float]]:
@@ -252,15 +289,16 @@ def _word_times(script_words: list[str], heard: list[tuple[str, float, float]]) 
 
 
 def _wrap(words: list[str]) -> str:
-    text = " ".join(words)
-    if len(text) <= MAX_LINE:
+    text = _join(words)
+    if textmod.width(text) <= MAX_LINE:
         return text
     # Two balanced lines, broken between words.
     best, best_score = text, 1e9
     for k in range(1, len(words)):
-        l1, l2 = " ".join(words[:k]), " ".join(words[k:])
-        if len(l1) <= MAX_LINE + 6 and len(l2) <= MAX_LINE + 6:
-            score = abs(len(l1) - len(l2))
+        l1, l2 = _join(words[:k]), _join(words[k:])
+        w1, w2 = textmod.width(l1), textmod.width(l2)
+        if w1 <= MAX_LINE + 6 and w2 <= MAX_LINE + 6:
+            score = abs(w1 - w2) - (8 if re.search(r"[,;:、，；：]$", l1) else 0)  # after a comma reads best
             if score < best_score:
                 best, best_score = f"{l1}\n{l2}", score
     return best
@@ -327,7 +365,7 @@ def from_segments(segments: list[tuple[str, float, float]], track_end: float) ->
 
 def match_rate(script: str, heard: list[tuple[str, float, float]]) -> float:
     """Share of script words Whisper heard the same way: a quick check that the audio says the script."""
-    a = [_norm(w) for w in textmod.PAUSE_TAG.sub(" ", textmod.strip_tags(script)).split() if _norm(w)]
+    a = [_norm(w) for w in _tokens(textmod.PAUSE_TAG.sub(" ", textmod.strip_tags(script))) if _norm(w)]
     b = [_norm(w) for w, _, _ in heard]
     if not a:
         return 1.0

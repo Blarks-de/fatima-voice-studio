@@ -58,7 +58,7 @@ as Qwen3-TTS.
 - **Engine:** it runs with the **NVIDIA · CUDA** or **AMD / Intel · Vulkan** engine (not the older-driver CUDA or
   CPU engine). Its own small engine part downloads with the model.
 - **Speed:** about real time on an NVIDIA card with 8 GB (a 10-minute script takes about 10 minutes, half the speed
-  of Qwen3-TTS). On Vulkan about 1.5× slower than real time.
+  of Qwen3-TTS). On Vulkan about 1.5 to 2× slower than real time, and there Q8 is faster than Q6 when it fits.
 - **Graphics memory:** Q8 uses about 7 GB, Q6 about 6 GB. It stays loaded while you use it and unloads after a few
   idle minutes, or when Qwen3-TTS speaks. On cards under 12 GB, Whisper and S2 Pro take turns on the card: after
   each script S2 Pro steps aside for the subtitles and loads again (about 5 seconds).
