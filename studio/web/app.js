@@ -1017,7 +1017,7 @@ async function loadVoices() {
   if (!S.settings) S.settings = await api('/api/settings');
   const lang = $('voice-lang').value || S.state?.default_language || 'en';
   $('voice-lang').innerHTML = languageOptions(lang);
-  $('find-lang').innerHTML = languageOptions($('find-lang').value || lang);
+  fillFindLang($('find-lang').value || lang);
   separateHelp();
   renderVoiceCards();
 }
@@ -1138,11 +1138,31 @@ $('voice-cards').addEventListener('click', run(async (e) => {
 }));
 
 // Find a voice: random new voices to keep
+const speaksIt = (m, lang) => m.kind === 'voice' && m.installed && (m.languages || []).includes(lang);
+function fillFindLang(selected) {
+  // Only languages a downloaded voice model speaks; one without a ready sample sentence asks for one.
+  const st = S.state, all = st?.languages || {};
+  const codes = Object.keys(all).filter((k) => (st?.models || []).some((m) => speaksIt(m, k)));
+  const pick = codes.includes(selected) ? selected : (codes[0] || 'en');
+  $('find-lang').innerHTML = codes.map((k) => `<option value="${k}"${k === pick ? ' selected' : ''}>${esc(all[k])}</option>`).join('');
+  findLangChanged();
+}
+function findLangChanged() {
+  const lang = $('find-lang').value;
+  const own = !(S.state?.sample_languages || []).includes(lang);
+  $('find-text-field').hidden = !own;
+  $('find-text').placeholder = `A sentence in ${langName(lang)} for the new voices to say`;
+}
+$('find-lang').addEventListener('change', findLangChanged);
 $('find-go').addEventListener('click', run(async () => {
-  const n = Number($('find-count').value);
-  $('find-go').disabled = true; $('find-go').innerHTML = `${icon('sparkle')} Finding ${n} voices… (about ${n * 8} s)`;
+  const n = Number($('find-count').value), lang = $('find-lang').value;
+  const text = $('find-text-field').hidden ? '' : $('find-text').value.trim();
+  if (!$('find-text-field').hidden && !text) { $('find-text').focus(); throw new Error(`Type a sentence in ${langName(lang)} for the new voices to say.`); }
+  const def = (S.state?.models || []).find((m) => m.key === S.state?.default_model);
+  const each = def && speaksIt(def, lang) ? 8 : 15;  // S2 Pro (other languages) takes longer
+  $('find-go').disabled = true; $('find-go').innerHTML = `${icon('sparkle')} Finding ${n} voices… (about ${n * each} s)`;
   try {
-    const found = await api('/api/voices/find', { method: 'POST', json: { language: $('find-lang').value, count: n } });
+    const found = await api('/api/voices/find', { method: 'POST', json: { language: lang, count: n, ...(text ? { text } : {}) } });
     $('found-list').innerHTML = found.map((f, i) => `
       <div class="found-item" data-token="${f.token}" data-lang="${f.language}">
         <div class="row between"><span class="micro">Voice ${i + 1} · ${esc(langName(f.language))}</span></div>

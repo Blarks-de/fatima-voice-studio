@@ -46,7 +46,9 @@ keeps only the voice. A long file is cut to its best minute first, and it takes 
 
 **Find a new voice** makes voices that belong to nobody: the model invents a different one each time.
 
-1. Pick the **Language** and **How many** (2, 4 or 6). Each takes about 8 seconds.
+1. Pick the **Language** and **How many** (2, 4 or 6). Each takes about 8 seconds. The list shows the languages your
+   downloaded voice models speak: Qwen3-TTS's 10, and with S2 Pro 80+ (those voices are found with S2 Pro, about
+   15 seconds each). For a language without a ready sample sentence, type one in **What the voices say**.
 2. Click **Find voices** and listen to each one.
 3. Type a name under the one you like and click **Keep**.
 

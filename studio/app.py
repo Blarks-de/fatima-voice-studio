@@ -53,6 +53,40 @@ PREVIEW_TEXT = {
     "ja": "こんにちは。これが私の声です。長い原稿も短い原稿も、自然な声で読み上げます。",
     "ko": "안녕하세요! 이것이 제 목소리입니다. 길거나 짧은 원고를 자연스러운 목소리로 읽어 드립니다.",
     "zh": "你好！这就是我的声音。无论长短，我都能用自然的声音朗读你的稿子。",
+    # S2 Pro's languages. Where the verb would say whether the voice is a man or a woman (Hindi, Urdu, Hebrew, Thai),
+    # the sentence is put so it doesn't. Languages without one ask for a sentence (Find a new voice).
+    "hi": "नमस्ते! यह मेरी आवाज़ है। आपकी स्क्रिप्ट, छोटी हो या लंबी, शांत और स्वाभाविक आवाज़ में पढ़ी जाएगी।",
+    "ur": "السلام علیکم! یہ میری آواز ہے۔ آپ کا اسکرپٹ، چھوٹا ہو یا لمبا، پرسکون اور قدرتی آواز میں پڑھا جائے گا۔",
+    "ar": "مرحبًا! هذا هو صوتي. أستطيع قراءة نصوصك، طويلة كانت أم قصيرة، بصوت هادئ وطبيعي.",
+    "fa": "سلام! صدای من این‌طور است. می‌توانم متن‌های شما را، کوتاه یا بلند، با صدایی آرام و طبیعی بخوانم.",
+    "bn": "নমস্কার! আমার কণ্ঠ এমন শোনায়। আপনার স্ক্রিপ্ট, ছোট হোক বা বড়, আমি শান্ত ও স্বাভাবিক কণ্ঠে পড়তে পারি।",
+    "ne": "नमस्ते! मेरो आवाज यस्तो छ। तपाईंको स्क्रिप्ट, छोटो होस् वा लामो, म शान्त र स्वाभाविक आवाजमा पढ्न सक्छु।",
+    "ta": "வணக்கம்! இதுதான் என் குரல். உங்கள் உரைகளை, நீளமாக இருந்தாலும் சுருக்கமாக இருந்தாலும், அமைதியான இயல்பான குரலில் படிக்க முடியும்.",
+    "tr": "Merhaba! Sesim böyle. Metinlerinizi, uzun ya da kısa, sakin ve doğal bir sesle okuyabilirim.",
+    "id": "Halo! Beginilah suara saya. Saya bisa membacakan naskah Anda, panjang atau pendek, dengan suara yang tenang dan alami.",
+    "ms": "Helo! Beginilah suara saya. Saya boleh membaca skrip anda, panjang atau pendek, dengan suara yang tenang dan semula jadi.",
+    "vi": "Xin chào! Đây là giọng của tôi. Tôi có thể đọc kịch bản của bạn, dài hay ngắn, bằng một giọng đọc tự nhiên và điềm tĩnh.",
+    "th": "สวัสดี! นี่คือเสียงที่จะอ่านบทของคุณ ไม่ว่าจะยาวหรือสั้น ด้วยน้ำเสียงที่สงบและเป็นธรรมชาติ",
+    "tl": "Kumusta! Ganito ang boses ko. Kaya kong basahin ang iyong mga script, mahaba man o maikli, sa kalmado at natural na boses.",
+    "sw": "Habari! Hivi ndivyo sauti yangu ilivyo. Ninaweza kusoma maandishi yako, marefu au mafupi, kwa sauti tulivu na ya asili.",
+    "he": "שלום! כך נשמע הקול שלי. הטקסטים שלכם, ארוכים או קצרים, ייקראו בקול רגוע וטבעי.",
+    "pl": "Cześć! Tak brzmi mój głos. Mogę czytać twoje teksty, długie i krótkie, spokojnym, naturalnym głosem.",
+    "nl": "Hallo! Zo klinkt mijn stem. Ik kan je teksten voorlezen, lang of kort, met een rustige, natuurlijke stem.",
+    "sv": "Hej! Så här låter jag. Jag kan läsa dina manus, långa som korta, med en lugn och naturlig röst.",
+    "da": "Hej! Sådan lyder jeg. Jeg kan læse dine manuskripter, lange eller korte, med en rolig og naturlig stemme.",
+    "no": "Hei! Slik høres jeg ut. Jeg kan lese manusene dine, lange eller korte, med en rolig og naturlig stemme.",
+    "fi": "Hei! Tältä minä kuulostan. Voin lukea käsikirjoituksesi, pitkät tai lyhyet, rauhallisella ja luontevalla äänellä.",
+    "cs": "Ahoj! Takhle zním. Můžu číst tvoje texty, dlouhé i krátké, klidným a přirozeným hlasem.",
+    "sk": "Ahoj! Takto znie môj hlas. Môžem čítať tvoje texty, dlhé aj krátke, pokojným a prirodzeným hlasom.",
+    "el": "Γεια σας! Έτσι ακούγεται η φωνή μου. Μπορώ να διαβάσω τα κείμενά σας, μεγάλα ή μικρά, με ήρεμη και φυσική φωνή.",
+    "uk": "Привіт! Ось так звучить мій голос. Я можу читати ваші тексти, довгі й короткі, спокійно та природно.",
+    "bg": "Здравейте! Ето как звучи гласът ми. Мога да чета вашите текстове, дълги или кратки, със спокоен и естествен глас.",
+    "ro": "Bună! Așa sună vocea mea. Pot citi textele tale, lungi sau scurte, cu o voce calmă și naturală.",
+    "hu": "Szia! Így szól a hangom. Felolvasom a szövegeidet, legyenek hosszúak vagy rövidek, nyugodt, természetes hangon.",
+    "hr": "Bok! Ovako zvuči moj glas. Mogu čitati tvoje tekstove, duge ili kratke, mirnim i prirodnim glasom.",
+    "sr": "Здраво! Овако звучи мој глас. Могу да читам ваше текстове, дуге или кратке, мирним и природним гласом.",
+    "ca": "Hola! Així sona la meva veu. Puc llegir els teus textos, llargs o curts, amb una veu tranquil·la i natural.",
+    "af": "Hallo! So klink ek. Ek kan jou tekste lees, lank of kort, met 'n rustige, natuurlike stem.",
 }
 AUDIO_TYPES = {"mp3": "audio/mpeg", "wav": "audio/wav", "pcm": "audio/L16", "flac": "audio/flac"}
 
@@ -222,6 +256,18 @@ def create_app(cfg: dict) -> FastAPI:
             raise HTTPException(400, problem)
         return key
 
+    def model_for(lang: str) -> str:
+        """The voice model to speak a sample in this language: the default one if it speaks it, else a downloaded one
+        that does (S2 Pro for Hindi or Urdu, say)."""
+        installed = config.installed_models(cfg)
+        speaks = lambda k: lang in (config.MODELS[k].get("languages") or config.LANGUAGES)
+        if speaks(cfg["default_model"]):
+            return check_model(None)
+        key = next((k for k, m in config.MODELS.items() if m["kind"] == "voice" and k in installed and speaks(k)), None)
+        if not key:
+            check_speaks(cfg["default_model"], lang)  # says which model to download for it
+        return check_model(key)
+
     def batch_settings(raw: dict) -> dict:
         """Settings for a new batch: the request's, then its preset's (if it names one), then Settings."""
         if raw.get("preset"):
@@ -259,6 +305,7 @@ def create_app(cfg: dict) -> FastAPI:
                         "runtime": m.get("runtime", "llama"), "tags": bool(m.get("tags"))}
                        for k, m in config.MODELS.items()],
             "languages": config.LANGUAGE_NAMES,
+            "sample_languages": list(PREVIEW_TEXT),  # a ready sentence for voice samples (else one is typed)
             "default_model": cfg["default_model"], "default_language": cfg["default_language"],
             "default_voice": cfg["default_voice"],
             "subtitles_ready": subtitles.whisper_available(cfg),
@@ -722,13 +769,16 @@ def create_app(cfg: dict) -> FastAPI:
         if not v:
             raise HTTPException(404, "No such voice")
         lang = check_language(body.language or v.get("language"))
-        text = (body.text or "").strip() or PREVIEW_TEXT[lang]
-        key = uuid.uuid5(uuid.NAMESPACE_URL, f"{lang}|{text}|{cfg['default_model']}").hex[:10]
+        text = (body.text or "").strip() or PREVIEW_TEXT.get(lang) or v.get("transcript")  # else what its clip says
+        if not text:
+            raise HTTPException(400, f"Type a sentence in {config.LANGUAGE_NAMES.get(lang, lang)} for the voice to say.")
+        model = model_for(lang)
+        key = uuid.uuid5(uuid.NAMESPACE_URL, f"{lang}|{text}|{model}").hex[:10]
         PREVIEWS.mkdir(parents=True, exist_ok=True)
         path = PREVIEWS / f"{v['id']}-{key}.wav"
         if not path.exists():
             try:
-                track, sr = await worker.speech(text, voice=v["id"], language=lang, model=check_model(None), seed=42)
+                track, sr = await worker.speech(text, voice=v["id"], language=lang, model=model, seed=42)
             except (EngineError, ValueError) as e:
                 raise HTTPException(500, str(e))
             audio.save_wav(path, track, sr)
@@ -743,8 +793,10 @@ def create_app(cfg: dict) -> FastAPI:
     async def find_voices(body: Find):
         """Random new voices (no clip): the model invents one per seed. Keep the ones you like."""
         lang = check_language(body.language)
-        model = check_model(None)
-        text = (body.text or "").strip() or PREVIEW_TEXT[lang]
+        model = model_for(lang)
+        text = (body.text or "").strip() or PREVIEW_TEXT.get(lang)
+        if not text:
+            raise HTTPException(400, f"Type a sentence in {config.LANGUAGE_NAMES.get(lang, lang)} for the new voices to say.")
         FOUND.mkdir(parents=True, exist_ok=True)
         for f in FOUND.glob("*.wav"):  # samples from earlier searches that weren't kept
             if time.time() - f.stat().st_mtime > 3600:
