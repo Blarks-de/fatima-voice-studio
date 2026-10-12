@@ -25,7 +25,7 @@ jobs:
       matrix:
         include:
           - backend: cuda-13.4
-            defines: -DS2_CUDA=ON -DGGML_CUDA_CCCL_VERSION=v3.4.3
+            defines: -DS2_CUDA=ON  # s2.cpp's ggml is older than llama.cpp's: CUDA 13.4's own CCCL, not v3.4.3
           - backend: vulkan
             defines: -DS2_VULKAN=ON
     env:
