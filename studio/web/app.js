@@ -639,7 +639,7 @@ $('voice').addEventListener('change', () => {
 });
 $('language').addEventListener('change', () => { $('language').dataset.touched = '1'; });
 ['loudness', 'fmt-wav', 'fmt-mp3', 'opt-srt'].forEach((id) => $(id).addEventListener('change', () => { $(id).dataset.touched = '1'; }));
-$('model').addEventListener('change', fillCreateSelects);
+$('model').addEventListener('change', () => { fillCreateSelects(); renderScripts(); });  // each script's languages follow the model
 
 // Select the option closest to a value (speeds and loudness are numbers; options are a few steps).
 function setSelect(sel, value) {
@@ -1513,7 +1513,7 @@ function applyPreset(p) {
   if (s.subtitles != null) { $('opt-srt').checked = s.subtitles; $('opt-srt').dataset.touched = '1'; }
   if (s.pause_paragraph != null) $('pause-paragraph').value = s.pause_paragraph;
   if (s.spell_numbers != null) { $('opt-numbers').checked = s.spell_numbers; $('opt-numbers').dataset.touched = '1'; }
-  fillCreateSelects(); updateSummary();
+  fillCreateSelects(); renderScripts(); updateSummary();
 }
 $('preset').addEventListener('change', () => {
   const p = S.presets.find((x) => x.id === $('preset').value);
