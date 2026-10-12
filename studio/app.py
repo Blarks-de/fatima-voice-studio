@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-from . import APP_NAME, REPO_URL, __version__, audio, autostart, config, hardware, subtitles, text as textmod
+from . import APP_NAME, REPO_URL, __version__, audio, autostart, config, hardware, s2engine, subtitles, text as textmod
 from .downloads import Downloads
 from . import media
 from .engine import Engine, EngineError
@@ -624,15 +624,25 @@ def create_app(cfg: dict) -> FastAPI:
             raise HTTPException(400, str(e))
         finally:
             src.unlink(missing_ok=True)
+        if any(config.MODELS[k].get("runtime") == "s2" for k in config.installed_models(cfg)):
+            asyncio.create_task(transcribe_voice(v["id"]))  # ready for S2 Pro, and editable, before it's needed
         if not cfg["default_voice"]:
             cfg["default_voice"] = v["id"]
             config.save(cfg)
         return v
 
+    async def transcribe_voice(vid: str) -> None:
+        """What a new voice's clip says, heard by Whisper in the background (S2 Pro needs it to copy the voice)."""
+        try:
+            await asyncio.to_thread(s2engine.transcript, cfg, voices.clip(vid))
+        except Exception as e:  # Whisper missing or busy: it's done when S2 Pro first uses the voice
+            log.info("Couldn't transcribe the new voice %s yet: %s", vid, e)
+
     class VoiceEdit(BaseModel):
         name: str | None = None
         language: str | None = None
         notes: str | None = None
+        transcript: str | None = Field(None, max_length=2000)
 
     @app.patch("/api/voices/{vid}")
     def edit_voice(vid: str, body: VoiceEdit):
@@ -735,6 +745,7 @@ def create_app(cfg: dict) -> FastAPI:
                 raise HTTPException(500, str(e))
             token = uuid.uuid4().hex[:12]
             audio.save_wav(FOUND / f"{token}.wav", track, sr)
+            (FOUND / f"{token}.txt").write_text(text, encoding="utf-8")  # what it says, for S2 Pro if it's kept
             out.append({"token": token, "seed": seed, "language": lang, "seconds": round(len(track) / sr, 1)})
         return out
 
@@ -757,8 +768,10 @@ def create_app(cfg: dict) -> FastAPI:
         if not body.token.isalnum() or not path.exists():
             raise HTTPException(404, "That sample is gone. Find new voices again.")
         try:
+            said = FOUND / f"{body.token}.txt"
             v = await asyncio.to_thread(voices.add, name=body.name, data=path.read_bytes(), filename="found.wav",
-                                        language=check_language(body.language), notes=body.notes, source="found")
+                                        language=check_language(body.language), notes=body.notes, source="found",
+                                        extra={"transcript": said.read_text(encoding="utf-8")} if said.exists() else None)
         except ValueError as e:
             raise HTTPException(400, str(e))
         if not cfg["default_voice"]:

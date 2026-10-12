@@ -1106,10 +1106,14 @@ $('voice-cards').addEventListener('click', run(async (e) => {
     await api(`/api/voices/${encodeURIComponent(id)}`, { method: 'DELETE' });
     S.settings = await api('/api/settings'); await loadVoices();
   } else if (b.dataset.v === 'edit') {
+    const s2Ready = (S.state?.models || []).some((m) => m.runtime === 's2' && m.installed);
     const r = await editDialog({
       title: `Edit “${v.name}”`, name: v.name, nameLabel: 'Name', text: null, ok: 'Save',
       extra: `<div class="pair"><div class="field"><label class="label">Language</label><div class="select-wrap"><select class="select" name="language">${languageOptions(v.language)}</select>${icon('chevron')}</div></div></div>
         <div class="field"><label class="label">Notes</label><input class="input" name="notes" value="${esc(v.notes || '')}"></div>
+        ${s2Ready ? `<div class="field"><label class="label">What the clip says <span class="opt">— for S2 Pro</span></label>
+          <textarea class="paste" name="transcript" rows="3" style="min-height:70px" placeholder="Heard by Whisper the first time S2 Pro uses this voice">${esc(v.transcript || '')}</textarea>
+          <p class="help">S2 Pro copies a voice from the clip and these words. Fix any word Whisper got wrong; leave it empty to have it heard again.</p></div>` : ''}
         <hr style="border:0;border-top:1px solid var(--line);width:100%">
         <p class="help">Prepare the clip again from the original file (${v.trimmed_from ?? v.seconds} s):</p>
         <label class="check"><input type="checkbox" name="denoise" ${v.denoised ? 'checked' : ''}> Reduce background noise</label>
@@ -1118,7 +1122,7 @@ $('voice-cards').addEventListener('click', run(async (e) => {
         <p class="help">Pick the cleanest 6–15 seconds of one person talking. Longer clips are cut at a pause after 20 seconds.</p>`,
     });
     if (!r) return;
-    await api(`/api/voices/${encodeURIComponent(id)}`, { method: 'PATCH', json: { name: r.name, language: r.language, notes: r.notes } });
+    await api(`/api/voices/${encodeURIComponent(id)}`, { method: 'PATCH', json: { name: r.name, language: r.language, notes: r.notes, ...(s2Ready ? { transcript: r.transcript ?? '' } : {}) } });
     const range = [r.start === '' ? null : Number(r.start), r.end === '' ? null : Number(r.end)];
     if (r.denoise !== !!v.denoised || String(range) !== String(v.range || [null, null])) {
       await api(`/api/voices/${encodeURIComponent(id)}/prepare`, { method: 'POST', json: { denoise: r.denoise, start: range[0], end: range[1] } });

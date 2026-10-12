@@ -112,6 +112,7 @@ class Voices:
         if not v:
             raise KeyError(ref)
         raw, sr = audio.load(self.root / v["id"] / v["original"])
+        v.pop("transcript", None)  # another part of the recording says other words: heard again when S2 Pro needs it
         self._prepare(v, raw, sr, denoise=denoise, start=start, end=end)
         return v
 
@@ -147,6 +148,12 @@ class Voices:
         for k in ("language", "notes"):
             if k in fields and fields[k] is not None:
                 v[k] = fields[k].strip()
+        if fields.get("transcript") is not None:  # what the clip says (S2 Pro copies a voice from clip + words)
+            words = " ".join(fields["transcript"].split())
+            if words:
+                v["transcript"] = words
+            else:
+                v.pop("transcript", None)  # empty: Whisper hears it again the next time S2 Pro needs it
         self._save(v)
         return v
 
