@@ -173,6 +173,7 @@ About page when an update is ready. Older installers stay on the [releases page]
 
 | Version | What changed |
 |---|---|
+| [0.3.2](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.2) | Find a new voice and voice samples work in every language S2 Pro speaks (they failed in Hindi, Urdu and others). |
 | [0.3.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.1) | Whisper large-v3 turbo is used by itself on the graphics card (more accurate subtitles outside English). Each script's language list follows the voice model. |
 | [0.3.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.0) | Fish Audio S2 Pro, an optional second voice model: 80+ languages and emotion tags. Language lists show what each model speaks. Chinese and Japanese scripts are split and subtitled properly. |
 | [0.2.6](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.6) | Updates moved to the About page. Fixed parts that wouldn't play after the batch page refreshed. |

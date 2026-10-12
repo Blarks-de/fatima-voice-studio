@@ -2,6 +2,10 @@
 
 The app shows the entries for versions newer than yours on the About page. Keep each line short and plain.
 
+## 0.3.2
+- Fixed: Find a new voice and Hear it speak failed ("500 Internal Server Error") in languages like Hindi or Urdu. They now use a voice model that speaks the language (S2 Pro for Urdu), with ready sample sentences in 42 languages; for others, type a sentence for the voices to say.
+- Find a new voice lists only the languages your downloaded voice models speak.
+
 ## 0.3.1
 - Subtitles and transcripts use Whisper large-v3 turbo by themselves when Whisper runs on your graphics card and you have it: about as quick there as small, and much more accurate outside English. A model picked in Settings still wins.
 - Create: each script's language list follows the voice model, so a script in a language only S2 Pro speaks (Hindi, Urdu…) shows it.
