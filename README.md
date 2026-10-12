@@ -171,18 +171,19 @@ default by themselves, and are refused to AI agents unless allowed on the Connec
 What changed in each release. The full list is in [CHANGELOG.md](CHANGELOG.md); the app shows what's new on its
 About page when an update is ready. Older installers stay on the [releases page](https://github.com/hassanxs/fatima-voice-studio/releases).
 
-| Version | Released | What changed |
-|---|---|---|
-| [0.3.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.0) | 12 Oct 2026 | Fish Audio S2 Pro, an optional second voice model: 80+ languages and emotion tags. Language lists show what each model speaks. Chinese and Japanese scripts are split and subtitled properly. |
-| [0.2.6](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.6) | 9 Oct 2026 | Updates moved to the About page. Fixed parts that wouldn't play after the batch page refreshed. |
-| [0.2.5](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.5) | 9 Oct 2026 | Whisper runs on the graphics card: subtitles and transcripts about 9× faster. |
-| [0.2.4](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.4) | 9 Oct 2026 | New top bar, About page, dark mode, waveform players and built-in Help guides; works on a fresh Windows install. |
-| [0.2.3](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.3) | 8 Oct 2026 | Clearer Updates panel; ready-made English and Spanish pronunciation lists. |
-| [0.2.2](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.2) | 8 Oct 2026 | Windows shows the right version number after a quick update. |
-| [0.2.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.1) | 8 Oct 2026 | Import and export the pronunciation list; update notices. |
-| [0.2.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.0) | 8 Oct 2026 | Pronunciation dictionary, numbers read as words, speed control, channel presets, the Transcribe page, and voices cleaned out of music. |
-| [0.1.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.1.1) | 8 Oct 2026 | Every Whisper size for subtitles, and a setting to pick one. |
-| [0.1.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.1.0) | 7 Oct 2026 | First release. |
+| Version | What changed |
+|---|---|
+| [0.3.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.1) | Whisper large-v3 turbo is used by itself on the graphics card (more accurate subtitles outside English). Each script's language list follows the voice model. |
+| [0.3.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.0) | Fish Audio S2 Pro, an optional second voice model: 80+ languages and emotion tags. Language lists show what each model speaks. Chinese and Japanese scripts are split and subtitled properly. |
+| [0.2.6](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.6) | Updates moved to the About page. Fixed parts that wouldn't play after the batch page refreshed. |
+| [0.2.5](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.5) | Whisper runs on the graphics card: subtitles and transcripts about 9× faster. |
+| [0.2.4](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.4) | New top bar, About page, dark mode, waveform players and built-in Help guides; works on a fresh Windows install. |
+| [0.2.3](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.3) | Clearer Updates panel; ready-made English and Spanish pronunciation lists. |
+| [0.2.2](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.2) | Windows shows the right version number after a quick update. |
+| [0.2.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.1) | Import and export the pronunciation list; update notices. |
+| [0.2.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.2.0) | Pronunciation dictionary, numbers read as words, speed control, channel presets, the Transcribe page, and voices cleaned out of music. |
+| [0.1.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.1.1) | Every Whisper size for subtitles, and a setting to pick one. |
+| [0.1.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.1.0) | First release. |
 
 ## API and AI agents
 

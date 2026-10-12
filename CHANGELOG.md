@@ -2,6 +2,10 @@
 
 The app shows the entries for versions newer than yours on the About page. Keep each line short and plain.
 
+## 0.3.1
+- Subtitles and transcripts use Whisper large-v3 turbo by themselves when Whisper runs on your graphics card and you have it: about as quick there as small, and much more accurate outside English. A model picked in Settings still wins.
+- Create: each script's language list follows the voice model, so a script in a language only S2 Pro speaks (Hindi, Urdu…) shows it.
+
 ## 0.3.0
 - A second voice model: Fish Audio S2 Pro (Windows). Very expressive, 80+ languages (Hindi, Urdu, Arabic, Turkish…), and it follows emotion tags like [whisper] or [excited] in the text. About real time on an NVIDIA card with 8 GB. Optional, and for non-commercial use (marked in red). Download it on the Models page.
 - Language lists show what the chosen voice model speaks, and a model is told plainly when it doesn't speak a language.
