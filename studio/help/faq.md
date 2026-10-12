@@ -2,9 +2,10 @@
 
 ## Can I use the voiceovers in monetized YouTube videos?
 
-Yes. The voice model (Qwen3-TTS, Apache 2.0) and Whisper (MIT) are free for commercial use, and the app itself is
+With Qwen3-TTS, yes: it (Apache 2.0) and Whisper (MIT) are free for commercial use, and the app itself is
 MIT-licensed. Every model shows its licence in the app; *Commercial use OK* means monetized videos and client work
-are fine.
+are fine. The optional **Fish Audio S2 Pro** model is marked in red: it's for non-commercial use unless you get a
+licence from Fish Audio.
 
 What you must still have is the **right to the voice**: see the next question.
 
@@ -33,8 +34,10 @@ No. There's no subscription and no per-minute price: it runs on your own PC.
 
 ## Which languages does it speak?
 
-English, Spanish, French, German, Italian, Portuguese, Russian, Japanese, Korean and Chinese. *Numbers as words*
-works in English, Spanish, French, German, Italian and Portuguese.
+Qwen3-TTS speaks English, Spanish, French, German, Italian, Portuguese, Russian, Japanese, Korean and Chinese.
+The optional Fish Audio S2 Pro speaks 80+ languages, including Hindi, Urdu, Arabic, Turkish and Polish (see
+[Setup and models](setup-and-models.md#fish-audio-s2-pro-a-second-voice-model)). *Numbers as words* works in English,
+Spanish, French, German, Italian and Portuguese.
 
 ## How fast is it?
 

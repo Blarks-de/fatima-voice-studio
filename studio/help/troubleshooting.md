@@ -41,6 +41,17 @@ doesn't help, remove the engine and download it again on the **Setup** page.
 - Use the smaller **Qwen3-TTS 1.7B · Q4** voice model: download it on the Models page and pick it in
   **Settings → Defaults for new scripts → Voice model**.
 
+### "S2 Pro didn't fit in the graphics card's memory"
+
+S2 Pro Q8 needs about 7 GB of graphics memory. Close other programs that use the graphics card (games, video
+editors, other AI tools), or download **S2 Pro · Q6** on the Models page, which needs about 6 GB.
+
+### S2 Pro: "runs on the NVIDIA · CUDA or AMD / Intel · Vulkan engine" or "engine part is missing"
+
+S2 Pro doesn't run on the older-driver CUDA engine or the CPU engine: on **Setup**, download and use *NVIDIA · CUDA*
+(or *AMD / Intel · Vulkan*). If the engine part is missing (after switching engines, for example), click **Get it**
+on S2 Pro's card on the Models page.
+
 ### The NVIDIA engine won't start, or Setup says the driver is too old
 
 Update your graphics driver from [nvidia.com](https://www.nvidia.com/Download/index.aspx) or the NVIDIA app, then

@@ -1,6 +1,7 @@
 """Settings (data/config.json), the engine builds, and the models the app can download."""
 import ctypes
 import json
+import sys
 import os
 import secrets
 from pathlib import Path
@@ -206,6 +207,10 @@ S2_LANGUAGES = ["zh", "en", "ja", "ko", "es", "pt", "ar", "ru", "fr", "de", "sv"
                 "bo", "hr", "ro", "sn", "mi", "yi", "am", "be", "km", "is", "az", "sd", "br", "sq", "ps", "mn", "ht",
                 "ml", "sr", "sa", "te", "ka", "bs", "pa", "lt", "kn", "si", "hy", "mr", "as", "gu", "fo"]
 
+# Every language a voice model here speaks: Qwen3-TTS's ten first, then the rest of S2 Pro's by name. The language
+# picked for a script also sets Whisper's language, numbers as words and the pronunciation list.
+LANGUAGE_NAMES = {**LANGUAGES, **{k: v for k, v in sorted({"af": "Afrikaans", "sq": "Albanian", "am": "Amharic", "ar": "Arabic", "hy": "Armenian", "as": "Assamese", "az": "Azerbaijani", "eu": "Basque", "be": "Belarusian", "bn": "Bengali", "bs": "Bosnian", "br": "Breton", "bg": "Bulgarian", "my": "Burmese", "ca": "Catalan", "hr": "Croatian", "cs": "Czech", "da": "Danish", "nl": "Dutch", "et": "Estonian", "fo": "Faroese", "fi": "Finnish", "gl": "Galician", "ka": "Georgian", "el": "Greek", "gu": "Gujarati", "ht": "Haitian Creole", "he": "Hebrew", "hi": "Hindi", "hu": "Hungarian", "is": "Icelandic", "id": "Indonesian", "jw": "Javanese", "kn": "Kannada", "kk": "Kazakh", "km": "Khmer", "la": "Latin", "lv": "Latvian", "lt": "Lithuanian", "ms": "Malay", "ml": "Malayalam", "mi": "Maori", "mr": "Marathi", "mn": "Mongolian", "ne": "Nepali", "no": "Norwegian", "nn": "Norwegian Nynorsk", "ps": "Pashto", "fa": "Persian", "pl": "Polish", "pa": "Punjabi", "ro": "Romanian", "sa": "Sanskrit", "sr": "Serbian", "sn": "Shona", "sd": "Sindhi", "si": "Sinhala", "sk": "Slovak", "sl": "Slovenian", "sw": "Swahili", "sv": "Swedish", "tl": "Tagalog", "ta": "Tamil", "te": "Telugu", "th": "Thai", "bo": "Tibetan", "tr": "Turkish", "uk": "Ukrainian", "ur": "Urdu", "vi": "Vietnamese", "cy": "Welsh", "yi": "Yiddish", "yo": "Yoruba"}.items(), key=lambda kv: kv[1])}}
+
 # kind "voice": speaks text (runs on the engine). kind "subtitles": whisper.cpp for SRT timings and transcripts.
 MODELS = {
     "qwen3-tts-q8": {
@@ -273,6 +278,9 @@ MODELS["uvr-vocals"] = {
     "license": "MIT — commercial use OK", "page": "https://github.com/Anjok07/ultimatevocalremovergui",
     "about": "Takes the voice out of a clip with music or background sound under it, so it can become a clean "
              "reference voice. Runs on the CPU, about 4× faster than real time."}
+if sys.platform != "win32":  # s2.cpp is built for Windows only (the Linux and macOS ports run one system engine)
+    for _k in [k for k, m in MODELS.items() if m.get("runtime") == "s2"]:
+        del MODELS[_k]
 SUBTITLE_PREFERENCE = ["whisper-small", "whisper-turbo", "whisper-medium", "whisper-base", "whisper-large"]
 
 

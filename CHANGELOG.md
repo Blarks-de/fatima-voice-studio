@@ -2,6 +2,12 @@
 
 The app shows the entries for versions newer than yours on Settings → Updates. Keep each line short and plain.
 
+## 0.3.0
+- A second voice model: Fish Audio S2 Pro (Windows). Very expressive, 80+ languages (Hindi, Urdu, Arabic, Turkish…), and it follows emotion tags like [whisper] or [excited] in the text. About real time on an NVIDIA card with 8 GB. Optional, and for non-commercial use (marked in red). Download it on the Models page.
+- Language lists show what the chosen voice model speaks, and a model is told plainly when it doesn't speak a language.
+- Words in [square brackets] other than [pause] are tags: never read aloud and never in the subtitles. (Qwen3-TTS skips them.)
+- Voices remember what their clip says (Edit dialog), which S2 Pro uses to copy the voice.
+
 ## 0.2.6
 - Updates moved to the About page (menu at the top right), next to your version. The update dot and messages point there.
 - Fixed: a part could refuse to play ("no supported sources") after the batch page refreshed while a batch was running. Players now load again by themselves, and a part's audio only loads when you play it, so long batches open faster.

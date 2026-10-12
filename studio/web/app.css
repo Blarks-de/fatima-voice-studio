@@ -345,6 +345,8 @@ select.mini { height: 26px; max-width: 150px; padding: 0 6px; border: 1px solid 
   background: var(--well); font-size: 13px; line-height: 1.45; }
 .whisper-where > svg.i { color: var(--accent); width: 18px; height: 18px; }
 .step + .whisper-where { margin-top: 4px; }
+.tag-hint { display: block; margin-top: 6px; color: var(--muted); }
+.tag-hint code { font: 11px var(--mono); background: var(--well); padding: 0 4px; border-radius: 3px; }
 .dl { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
 .dl .progress { height: 5px; }
 .hw { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; padding: 20px; }

@@ -220,7 +220,7 @@ class Dictionary:
         src, dst = src.strip(), dst.strip()
         if not src or not dst:
             raise ValueError("Fill in both the written form and how to say it.")
-        if language and language not in config.LANGUAGES:
+        if language and language not in config.LANGUAGE_NAMES:
             raise ValueError("Unsupported language")
         with self._lock:
             if any(e["from"].lower() == src.lower() and e["language"] == language for e in self.entries):
@@ -330,9 +330,9 @@ def _language(value: str, default: str) -> str | None:
         return default
     if v in ("all", "any", "every language", "todos", "todas", "*"):
         return ""
-    if v in config.LANGUAGES:
+    if v in config.LANGUAGE_NAMES:
         return v
-    names = {name.lower(): code for code, name in config.LANGUAGES.items()}
+    names = {name.lower(): code for code, name in config.LANGUAGE_NAMES.items()}
     names.update({"español": "es", "espanol": "es", "inglés": "en", "ingles": "en", "francés": "fr", "frances": "fr",
                   "alemán": "de", "aleman": "de", "italiano": "it", "portugués": "pt", "portugues": "pt"})
     return names.get(v)

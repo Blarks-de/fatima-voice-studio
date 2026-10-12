@@ -199,9 +199,18 @@ def create_app(cfg: dict) -> FastAPI:
 
     def check_language(code: str | None) -> str:
         code = (code or cfg["default_language"]).lower()
-        if code not in config.LANGUAGES:
-            raise HTTPException(400, f"Unsupported language “{code}”. Use one of: {', '.join(config.LANGUAGES)}")
+        if code not in config.LANGUAGE_NAMES:
+            raise HTTPException(400, f"Unsupported language “{code}”. Use a language code from GET /api/state.")
         return code
+
+    def check_speaks(model: str, lang: str) -> None:
+        """A model that doesn't speak this language is refused up front, in plain words."""
+        m = config.MODELS[model]
+        if lang not in (m.get("languages") or config.LANGUAGES):
+            other = next((x["label"] for k, x in config.MODELS.items()
+                          if x["kind"] == "voice" and lang in (x.get("languages") or [])), None)
+            raise HTTPException(400, f"{m['label']} doesn't speak {config.LANGUAGE_NAMES.get(lang, lang)}."
+                                     + (f" Use {other} for it." if other else ""))
 
     def check_model(key: str | None) -> str:
         key = key or cfg["default_model"]
@@ -227,6 +236,7 @@ def create_app(cfg: dict) -> FastAPI:
         s["model"] = check_model(raw.get("model"))
         s["voice"] = check_voice(raw.get("voice") if "voice" in raw else cfg["default_voice"])
         s["language"] = check_language(raw.get("language") or (voices.get(s["voice"]) or {}).get("language"))
+        check_speaks(s["model"], s["language"])
         s["seed"] = raw.get("seed")
         s["formats"] = [f for f in (s["formats"] or []) if f in ("wav", "mp3")] or ["wav", "mp3"]
         s["max_chars"] = max(150, min(1200, int(s["max_chars"])))
@@ -246,9 +256,9 @@ def create_app(cfg: dict) -> FastAPI:
             "engine": engine.status(),
             "models": [{"key": k, "label": m["label"], "short": m["short"], "kind": m["kind"], "installed": k in installed,
                         "license": m["license"], "noncommercial": bool(m.get("noncommercial")), "languages": m.get("languages"),
-                        "runtime": m.get("runtime", "llama")}
+                        "runtime": m.get("runtime", "llama"), "tags": bool(m.get("tags"))}
                        for k, m in config.MODELS.items()],
-            "languages": config.LANGUAGES,
+            "languages": config.LANGUAGE_NAMES,
             "default_model": cfg["default_model"], "default_language": cfg["default_language"],
             "default_voice": cfg["default_voice"],
             "subtitles_ready": subtitles.whisper_available(cfg),
@@ -294,6 +304,8 @@ def create_app(cfg: dict) -> FastAPI:
             d = s.model_dump()
             d["voice"] = check_voice(d.get("voice")) if d.get("voice") else None
             d["language"] = check_language(d["language"]) if d.get("language") else None
+            if d["language"]:
+                check_speaks(settings["model"], d["language"])
             if not (d["voice"] or settings["voice"]):
                 raise HTTPException(400, "Pick a voice for the batch (or for every script).")
             scripts.append(d)
@@ -589,7 +601,7 @@ def create_app(cfg: dict) -> FastAPI:
         if not hasattr(upload, "read"):
             raise HTTPException(400, "Choose an audio or video file.")
         language = str(form.get("language") or "")
-        if language and language not in config.LANGUAGES:
+        if language and language not in config.LANGUAGE_NAMES:
             raise HTTPException(400, "Unsupported language")
         filename = getattr(upload, "filename", "") or "clip.wav"
         separate = form.get("separate") in ("1", "true", "on")
@@ -647,7 +659,7 @@ def create_app(cfg: dict) -> FastAPI:
 
     @app.patch("/api/voices/{vid}")
     def edit_voice(vid: str, body: VoiceEdit):
-        if body.language and body.language not in config.LANGUAGES:
+        if body.language and body.language not in config.LANGUAGE_NAMES:
             raise HTTPException(400, "Unsupported language")
         try:
             return voices.update(vid, **body.model_dump())
@@ -822,7 +834,7 @@ def create_app(cfg: dict) -> FastAPI:
         if Path(filename).suffix.lower() in media.VIDEO_EXT and not media.ffmpeg_exe():
             raise HTTPException(400, "Reading video needs ffmpeg. Download it on the Models page (Tools), then try again.")
         language = str(form.get("language") or "") or None
-        if language and language not in config.LANGUAGES:
+        if language and language not in config.LANGUAGE_NAMES:
             raise HTTPException(400, "Unsupported language")
         tmp = config.DATA / "tmp"
         tmp.mkdir(parents=True, exist_ok=True)
@@ -909,7 +921,7 @@ def create_app(cfg: dict) -> FastAPI:
     def export_words(format: str = "csv", language: str | None = None):
         if format not in ("csv", "json"):
             raise HTTPException(400, "format must be csv or json")
-        if language and language not in config.LANGUAGES:
+        if language and language not in config.LANGUAGE_NAMES:
             raise HTTPException(400, "Unsupported language")
         import datetime as dt
         name = f"pronunciation{'-' + language if language else ''}-{dt.date.today().isoformat()}.{format}"
@@ -928,7 +940,7 @@ def create_app(cfg: dict) -> FastAPI:
         if len(data) > 10 * 1024 * 1024:
             raise HTTPException(400, "That file is over 10 MB; a pronunciation list is usually a few KB.")
         default = str(form.get("language") or "")
-        if default and default not in config.LANGUAGES:
+        if default and default not in config.LANGUAGE_NAMES:
             raise HTTPException(400, "Unsupported language")
         try:
             rows, problems = parse_import(data, getattr(upload, "filename", "") or "words.csv", default)
@@ -1315,6 +1327,7 @@ def create_app(cfg: dict) -> FastAPI:
             raise HTTPException(400, "No voice: pass a voice name from the voice library (GET /v1/audio/voices), "
                                      "or set a default voice in Settings.")
         lang = check_language(p.language or v.get("language"))
+        check_speaks(check_model(p.model), lang)
         try:
             # OpenAI allows 0.25-4; speech stays natural between 0.8 and 1.25, so the speed is kept in that range.
             track, sr = await worker.speech(p.input, voice=v["id"], language=lang, model=check_model(p.model),

@@ -143,6 +143,9 @@ app under **Help** (works offline); and as Markdown in [`studio/help`](studio/he
   take, edit its text, or edit the script: only what changed is spoken again. Parts that may have gone wrong are
   found and marked for you. [More](studio/help/batches.md)
 - **A queue that keeps going** — reorder, pause, resume; if the PC stops, the batch carries on where it left off.
+- **A second, more expressive voice model (Windows)** — Fish Audio S2 Pro: 80+ languages and emotion tags like
+  `[whisper]` or `[excited]` in the text, about real time on an 8 GB NVIDIA card. Optional and non-commercial.
+  [More](studio/help/setup-and-models.md#fish-audio-s2-pro-a-second-voice-model)
 - **Channel presets**, **Transcribe** (video or audio to TXT, SRT and VTT), an **OpenAI-compatible API** and an
   **MCP server** for AI agents.
 
@@ -151,11 +154,12 @@ app under **Help** (works offline); and as Markdown in [`studio/help`](studio/he
 | Model | Licence | Notes |
 |---|---|---|
 | Qwen3-TTS 1.7B · Q8 (default) / Q4 | Apache 2.0 — commercial use OK | 10 languages: English, Spanish, French, German, Italian, Portuguese, Russian, Japanese, Korean, Chinese |
-| Whisper base, small, medium, large-v3 turbo, large-v3 | MIT — commercial use OK | Subtitle timing and transcription, on the CPU |
+| Fish Audio S2 Pro · Q8 / Q6 (optional, Windows) | Fish Audio Research License — non-commercial; commercial use needs a licence from Fish Audio | 80+ languages, emotion tags; NVIDIA (CUDA) or AMD / Intel (Vulkan) engine. Built with Fish Audio. |
+| Whisper base, small, medium, large-v3 turbo, large-v3 | MIT — commercial use OK | Subtitle timing and transcription, on the graphics card or the CPU |
 | UVR MDX-Net Voc_FT (voice separator) | MIT — commercial use OK | Takes a voice out of music |
 
-Every model shows its licence in the app. Non-commercial models would carry a red label and are refused to AI
-agents unless allowed on the Connect page. See [Setup and models](studio/help/setup-and-models.md) and
+Every model shows its licence in the app. Non-commercial models (S2 Pro) carry a red label, are never picked as the
+default by themselves, and are refused to AI agents unless allowed on the Connect page. See [Setup and models](studio/help/setup-and-models.md) and
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 ## API and AI agents

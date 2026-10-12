@@ -81,6 +81,9 @@ class Engine:
 
     async def speak(self, model: str, text: str, *, language: str, voice: Path | None, seed: int, out: Path) -> float:
         """Speak `text` into the WAV file `out`; returns the seconds it took."""
+        if model in config.MODELS and language not in (config.MODELS[model].get("languages") or config.LANGUAGES):
+            raise EngineError(f"{config.MODELS[model]['label']} doesn't speak "
+                              f"{config.LANGUAGE_NAMES.get(language, language)}. Pick another model for this script.")
         if problem := self.ready_problem(model):
             self.state, self.error = "error", problem
             raise EngineError(problem)

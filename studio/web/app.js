@@ -358,9 +358,15 @@ function voiceOptions(selected, { blank } = {}) {
   if (!S.voices.length && !blank) opts.unshift('<option value="">No voices yet — add one on the Voices page</option>');
   return opts.join('');
 }
-function languageOptions(selected) {
-  return Object.entries(S.state?.languages || {}).map(([k, v]) => `<option value="${k}"${k === selected ? ' selected' : ''}>${esc(v)}</option>`).join('');
+// Languages for a voice model (only those it speaks), or every language the app knows (voices, pronunciation, transcripts).
+function languageOptions(selected, model) {
+  const all = S.state?.languages || {};
+  const m = model && (S.state?.models || []).find((x) => x.key === model);
+  const codes = m?.languages?.length ? Object.keys(all).filter((k) => m.languages.includes(k)) : Object.keys(all);
+  if (selected && !codes.includes(selected) && !m) codes.unshift(selected);
+  return codes.map((k) => `<option value="${k}"${k === selected ? ' selected' : ''}>${esc(all[k] || k)}</option>`).join('');
 }
+const createModel = () => $('model')?.value || S.state?.default_model;
 
 // ---------- routing ----------
 const VIEWS = ['create', 'batches', 'batch', 'voices', 'models', 'setup', 'connect', 'settings', 'words', 'transcribe', 'help', 'about'];
@@ -506,7 +512,7 @@ function renderScripts() {
         <span class="meta">${s.text ? `${s.text.length.toLocaleString()} characters · about ${fmtDur(s.text.length / 14)}` : ''}</span>
         <span class="row" style="gap:6px">
           <select class="mini" data-f="voice" aria-label="Voice for this script">${voiceOptions(s.voice || '', { blank: 'Batch voice' })}</select>
-          <select class="mini" data-f="language" aria-label="Language for this script"><option value="">Batch language</option>${languageOptions(s.language || '')}</select>
+          <select class="mini" data-f="language" aria-label="Language for this script"><option value="">Batch language</option>${languageOptions(s.language || '', createModel())}</select>
         </span></div>
     </li>`).join('');
   $('script-count').textContent = plural(S.scripts.filter((s) => s.text.trim()).length, 'script');
@@ -608,12 +614,12 @@ function fillCreateSelects() {
   const keepVoice = $('voice').value || s.default_voice || st.default_voice;
   $('voice').innerHTML = voiceOptions(keepVoice);
   const v = S.voices.find((x) => x.id === $('voice').value);
-  const keepLang = $('language').dataset.touched ? $('language').value : (v?.language || st.default_language);
-  $('language').innerHTML = languageOptions(keepLang);
   const keepModel = $('model').value || st.default_model;
   $('model').innerHTML = st.models.filter(speakable).map((m) => `<option value="${m.key}"${m.key === keepModel ? ' selected' : ''}${m.installed ? '' : ' disabled'}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('');
   const m = st.models.find((x) => x.key === $('model').value);
-  $('model-license').innerHTML = m ? licenseBadge(m) : '';
+  const keepLang = $('language').dataset.touched ? $('language').value : (v?.language || st.default_language);
+  $('language').innerHTML = languageOptions(keepLang, createModel());  // only what this model speaks
+  $('model-license').innerHTML = (m ? licenseBadge(m) : '') + (m?.tags ? '<span class="tag-hint">This model follows <b>[tags]</b> in the text: <code>[whisper]</code>, <code>[excited]</code>, <code>[sad]</code>, <code>[low voice]</code>, or any short instruction in square brackets. Subtitles leave them out. <a href="#help/writing-scripts/emotion-tags-s2-pro">More</a></span>' : '');
   $('voice-help').innerHTML = !S.voices.length ? 'Add a voice first: <a href="#voices">Voices → Add a voice</a> (a 6–15 second clip), or find a new one there.'
     : (v?.advice?.length ? `${icon('alert')} ${esc(v.advice[0])}` : '');
   if (!$('pause-paragraph').value) $('pause-paragraph').value = s.pause_paragraph ?? 0.7;
@@ -966,7 +972,7 @@ $('b-scripts').addEventListener('click', run(async (e) => {
         title: `Edit script ${n}`, help: 'Only the parts whose text changed are spoken again; the rest keep their audio.',
         name: s.title, text: s.text,
         extra: `<div class="pair"><div class="field"><label class="label">Voice</label><div class="select-wrap"><select class="select" name="voice">${voiceOptions(s.voice)}</select>${icon('chevron')}</div></div>
-          <div class="field" style="flex:0 0 160px"><label class="label">Language</label><div class="select-wrap"><select class="select" name="language">${languageOptions(s.language)}</select>${icon('chevron')}</div></div></div>
+          <div class="field" style="flex:0 0 160px"><label class="label">Language</label><div class="select-wrap"><select class="select" name="language">${languageOptions(s.language, d.settings?.model)}</select>${icon('chevron')}</div></div></div>
           <p class="help">Changing the voice or language speaks the whole script again.</p>`,
       });
       if (!r) return;
@@ -1381,7 +1387,7 @@ async function loadSettings() {
     <div class="settings-stack">
     <section class="card panel"><h2>Defaults for new scripts</h2>
       <div class="field"><label class="label">Voice</label><div class="select-wrap"><select class="select" data-set="default_voice">${voiceOptions(s.default_voice, { blank: 'None' })}</select>${icon('chevron')}</div></div>
-      <div class="pair"><div class="field"><label class="label">Language</label><div class="select-wrap"><select class="select" data-set="default_language">${languageOptions(s.default_language)}</select>${icon('chevron')}</div></div>
+      <div class="pair"><div class="field"><label class="label">Language</label><div class="select-wrap"><select class="select" data-set="default_language">${languageOptions(s.default_language, s.default_model)}</select>${icon('chevron')}</div></div>
         <div class="field"><label class="label">Voice model</label><div class="select-wrap"><select class="select" data-set="default_model">${st.models.filter(speakable).map((m) => `<option value="${m.key}"${m.key === s.default_model ? ' selected' : ''}>${esc(m.label)}${m.installed ? '' : ' (not downloaded)'}</option>`).join('')}</select>${icon('chevron')}</div></div></div>
     </section>
     <section class="card panel"><h2>Speech</h2>
@@ -1469,6 +1475,11 @@ $('settings-body').addEventListener('change', run(async (e) => {
   if (!body) return;
   const r = await api('/api/settings', { method: 'PUT', json: body });
   S.settings = r;
+  const ls = document.querySelector('[data-set="default_language"]');
+  if (el.dataset.set === 'default_model' && ls) {  // only what the new default model speaks
+    ls.innerHTML = languageOptions(r.default_language, r.default_model);
+    if (ls.value !== r.default_language) S.settings = await api('/api/settings', { method: 'PUT', json: { default_language: ls.value } });
+  }
   toast(r.restart_needed ? 'Saved. Restart the app to use the new port.' : 'Saved.', true);
 }));
 $('settings-body').addEventListener('click', run(async (e) => {
@@ -1494,8 +1505,8 @@ async function loadPresets() {
 function applyPreset(p) {
   const s = p.settings;
   if (s.voice) $('voice').value = s.voice;
-  if (s.language) { $('language').value = s.language; $('language').dataset.touched = '1'; }
-  if (s.model) $('model').value = s.model;
+  if (s.model) $('model').value = s.model;  // first: the language list follows the model
+  if (s.language) { $('language').innerHTML = languageOptions(s.language, createModel()); $('language').value = s.language; $('language').dataset.touched = '1'; }
   if (s.speed != null) { setSelect($('speed'), s.speed); $('speed').dataset.touched = '1'; }
   if (s.loudness != null) { setSelect($('loudness'), s.loudness); $('loudness').dataset.touched = '1'; }
   if (s.formats) { $('fmt-wav').checked = s.formats.includes('wav'); $('fmt-mp3').checked = s.formats.includes('mp3'); $('fmt-wav').dataset.touched = '1'; }

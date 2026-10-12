@@ -24,7 +24,8 @@ Pause tags aren't read aloud and don't appear in the subtitles.
 
 ## Long scripts are spoken in parts
 
-A long script is spoken in **parts** of up to about 40 seconds (600 characters), split at the end of a sentence.
+A long script is spoken in **parts** of up to about 40 seconds (600 characters; 300 with S2 Pro), split at the end of
+a sentence.
 Every part uses the same voice, and the parts are joined with exact pauses, so you hear one smooth
 voiceover. Parts make long scripts reliable, and if one part comes out wrong you redo just that part (see
 [Batches and fixing parts](batches.md#fixing-one-part)).
@@ -62,6 +63,24 @@ subtitles keep the original spelling.
 
 To fix a word in just one place, edit that part instead (see
 [Batches and fixing parts](batches.md#fixing-one-part)).
+
+## Emotion tags (S2 Pro)
+
+With **Fish Audio S2 Pro** you can tell the voice how to say something with a tag in square brackets, right before
+the words:
+
+```
+[whisper] Deep beneath the ice, something was waiting.
+[excited] And then the drill broke through! [sad] But nobody was ready for what came next.
+```
+
+Common tags: `[whisper]`, `[excited]`, `[sad]`, `[angry]`, `[surprised]`, `[low voice]`, `[laughing]`, `[sigh]`,
+`[pause]`, `[emphasis]`, `[professional broadcast tone]`. Any short description works, up to 60 characters. How
+strongly a tag is followed varies; try a **New take** if one doesn't land.
+
+- Tags are never read aloud or shown in the subtitles.
+- `[pause 2]` stays the app's own pause (see above), with any model.
+- **Qwen3-TTS** doesn't follow tags: it skips any words in square brackets.
 
 ## Tips for a natural read
 

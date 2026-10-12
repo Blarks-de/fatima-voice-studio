@@ -40,11 +40,33 @@ If the recommended NVIDIA engine won't start, update your graphics driver from n
 |---|---|---|
 | **Qwen3-TTS 1.7B · Q8** (default) | The best quality. Graphics cards with more than 4 GB. | 2.3 GB |
 | **Qwen3-TTS 1.7B · Q4** | Graphics cards with 4 GB or less, and CPU-only PCs. | 1.5 GB |
+| **Fish Audio S2 Pro · Q8** | Very expressive, 80+ languages, emotion tags. NVIDIA cards with 8 GB or more. | 5.6 GB |
+| **Fish Audio S2 Pro · Q6** | The same for cards with 6 to 8 GB. | 4.5 GB |
 
 Both are the same model ([Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base)), free for
 commercial use (Apache 2.0), and speak 10 languages: English, Spanish, French, German, Italian, Portuguese,
 Russian, Japanese, Korean and Chinese. The Models page warns when a model is a tight fit or too big for your
 graphics card.
+
+### Fish Audio S2 Pro (a second voice model)
+
+[S2 Pro](https://huggingface.co/fishaudio/s2-pro) is a bigger, very expressive voice model: it speaks 80+ languages
+(Hindi, Urdu, Arabic, Turkish, Polish and many more) and follows **emotion tags** in the text, like `[whisper]` or
+`[excited]` (see [Writing scripts](writing-scripts.md#emotion-tags-s2-pro)). It copies a voice from the same clips
+as Qwen3-TTS.
+
+- **Engine:** it runs with the **NVIDIA · CUDA** or **AMD / Intel · Vulkan** engine (not the older-driver CUDA or
+  CPU engine). Its own small engine part downloads with the model.
+- **Speed:** about real time on an NVIDIA card with 8 GB (a 10-minute script takes about 10 minutes, half the speed
+  of Qwen3-TTS). On Vulkan about 1.5× slower than real time.
+- **Graphics memory:** Q8 uses about 7 GB, Q6 about 6 GB. It stays loaded while you use it and unloads after a few
+  idle minutes, or when Qwen3-TTS speaks. On cards under 12 GB, Whisper and S2 Pro take turns on the card: after
+  each script S2 Pro steps aside for the subtitles and loads again (about 5 seconds).
+- **Licence:** S2 Pro is for non-commercial use (Fish Audio Research License); commercial use needs a licence from
+  Fish Audio. The app marks it in red, never picks it as the default by itself, and AI agents can't use it unless
+  you allow it on the Connect page.
+- Pick it per batch, quick take or preset in the **Voice model** list on the Create page, or as the default in
+  Settings. Scripts for it are spoken in shorter parts (about 300 characters).
 
 ## Whisper models (subtitles and transcripts)
 
