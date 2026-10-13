@@ -39,10 +39,9 @@ LLAMA_CUDART_SHA256=f4e1f95c1b86771fbbbc3fece882561182fd12984e40cbe31d082a7b15c2
 # s2.cpp (S2 Pro) and whisper-cli for the graphics card, built by .github/workflows/linux-engines.yml
 REPO_URL=https://github.com/hassanxs/fatima-voice-studio
 ENGINES_RELEASE=linux-engines-1
-# TODO before release: these are the local test builds; replace them with the published archives' SHA-256
 declare -A ENGINES_SHA256=(
-  [cuda]=85ecd2d33c96718ac48af30ff442bd64dc1d35223cc8b0c32e694cc833eb4db3
-  [vulkan]=ccc57eb7e7c876e624e8181e0491ee7330cc9776048c6d106a3962fcb24aefdb
+  [cuda]=beefa55e8c3abc377145bc45d0bd707facccaa1e612b1da04011a32d8f0aca92
+  [vulkan]=a88c77e95199a9355a4b2b1cd2070db0d36324382e34a904e3cc9908b7a98064
 )
 # download sizes for the plan (MB)
 declare -A DOWNLOAD_MB=([llama-cuda]=590 [llama-vulkan]=30 [engines-cuda]=195 [engines-vulkan]=40)
