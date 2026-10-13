@@ -11,6 +11,10 @@ Honest overview of what has and hasn't been verified. "Re-run pending" means it 
 
 | Area | Status |
 |---|---|
+| `setup.sh --yes` from scratch as a normal user with sudo: system packages, uv, Python, llama.cpp download, whisper-cli build, menu entry; then the smoke test, starting the app (`/v1/health`), a second run, `--uninstall` | **Tested** 2026-10-13 in clean containers: Debian 12 and 13, Ubuntu 22.04, Fedora 44, openSUSE Tumbleweed, Arch. No tray icon on Debian 12 / Ubuntu 22.04 (gobject-introspection 1.x only); no GPU in the containers |
+| `setup.sh --yes` with the CUDA/Vulkan engine downloads (local test archives), then a Qwen3-TTS sentence and a Whisper transcription on the processor through the API | **Tested** 2026-10-13 in clean containers: Debian 12 and 13, Ubuntu 22.04, Fedora 44, openSUSE Tumbleweed, Arch: the downloaded llama.cpp, s2.cpp and whisper-cli run on all of them, speech and transcripts correct. Tray icon: Arch, Debian 13 and Fedora yes; Debian 12 and Ubuntu 22.04 no (gobject-introspection 1.x only); openSUSE Tumbleweed no (pycairo does not build there yet) |
+| CUDA on a real NVIDIA card: Ubuntu 24.04 container on an RTX 5060 (8 GB) | **Tested** 2026-10-13: setup picked CUDA; S2 Pro Q8 in real time (12.0 s of speech in 12.5 s), Whisper 12 s of audio in 2.6 s, S2 Pro unloaded for Whisper. On Ubuntu 22.04 the same card got Vulkan (glibc 2.35) |
+| Full setup on a real machine, then speech through the app with a cloned voice | **Tested** 2026-10-13 on Linux Mint 22.3, Quadro M1000M (2 GB, Vulkan): the Q4 model runs partly on the card, partly in RAM |
 | `test_smoke.py` (static + runtime + web checks), `setup.sh` syntax, generated `.desktop`/`.service` files incl. install paths with spaces | **Tested** after the latest changes (Debian 13, no GPU) |
 | No Windows ffmpeg/Whisper download is offered or started; system ffmpeg wins over a stray `ffmpeg.exe`; no Download button for the System engine | **Tested** by the smoke test (HTTP-level, no real download) |
 | Whisper build (`build-whisper.sh`), transcription, subtitle timing, `[pause]` scripts, language auto-detection | **Tested** on CPU, Debian 13 (before the latest changes) |
@@ -36,10 +40,51 @@ Honest overview of what has and hasn't been verified. "Re-run pending" means it 
 
 ```bash
 cd ~/fatima-voice-studio/linux
-./setup.sh                  # venv + dependencies + a check of the tools
-./build-whisper.sh          # only for subtitles/transcripts: builds whisper-cli into linux/bin/ (~1 min)
+./setup.sh                  # shows what it will do, asks once, then installs everything (--yes: no question)
 ./fatima-voice-studio       # starts and opens http://127.0.0.1:9830/
 ```
+
+Or without git, in one line (downloads the latest release into `~/.local/opt/fatima-voice-studio`; run it again to
+update):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hassanxs/fatima-voice-studio/main/linux/install.sh | bash
+```
+
+`setup.sh` works the same on Debian/Ubuntu/Mint (apt), Fedora/RHEL (dnf), openSUSE (zypper) and Arch (pacman). It
+lists what it is going to do and asks once ("Go ahead?"); `sudo` asks for the password once. The steps:
+
+1. **Graphics card**: it looks at the cards (`nvidia-smi`, `lspci`) and picks the engines for them, shown in the
+   plan as e.g. `Graphics card: NVIDIA GeForce RTX 5060 (8 GB, driver 616) -> NVIDIA CUDA`:
+   - **CUDA** for NVIDIA RTX 20 series and newer with driver 580+, on systems with glibc 2.38+ (Ubuntu 24.04, Mint
+     22, Debian 13, Fedora 39, Arch or newer; llama.cpp's CUDA build needs it). About 790 MB of downloads.
+   - **Vulkan** for everything else: AMD, Intel, older NVIDIA cards, an older driver or an older system (the plan
+     says why). About 70 MB. Without any card the Vulkan engines run on the processor.
+   - `FVS_BACKEND=cuda` or `vulkan` overrides the choice. After a driver update, run `setup.sh` again: it switches.
+2. **System packages**: only the missing ones (ffmpeg, the Vulkan loader for Vulkan, the development files for the
+   tray icon), in one `sudo` call with the distribution's package manager. Packages a
+   distribution doesn't have are skipped with a note. apt waits for Update Manager to release its lock.
+3. **uv and Python 3.13**: the official uv installer into `~/.local/bin` if uv is missing, then the venv.
+4. **The engines**, all SHA-256 checked, into `linux/bin` (`bin/BACKEND` says which kind):
+   - llama.cpp for Qwen3-TTS: the official build of the release the Windows version pins (CUDA with NVIDIA's cuBLAS
+     and cudart, or Vulkan), in `bin/llama.cpp`;
+   - s2.cpp for Fish Audio S2 Pro (`bin/s2cpp`) and whisper-cli for the graphics card (`bin/whisper-gpu`), built by
+     `.github/workflows/linux-engines.yml` for the same backend. On the processor the app runs the same whisper-cli
+     with `-ng` (`bin/whisper-cli`). Only on ARM or when that download fails is whisper-cli built here instead
+     (`./build-whisper.sh`, CPU).
+5. **Menu entry**: Fatima Voice Studio in the applications menu, with the app's icon.
+
+`./setup.sh --uninstall` removes the menu entry, the service, the Python environment and the engines. It asks before
+deleting voices, models and settings (default: keep them) and never touches the batches in `~/Music`.
+
+The app then uses the card as on Windows: S2 Pro and Whisper run as its "cuda" or "vulkan" engine (with the move
+off a built-in chip to the dedicated card, and S2 Pro making room for Whisper on cards under 12 GB), Qwen3-TTS on
+the llama.cpp "system" engine, labelled e.g. "llama.cpp · NVIDIA · CUDA" on Setup.
+
+**Small graphics cards.** When a Qwen3-TTS model is bigger than the card (Q4 needs about 3.2 GB), the app lets
+llama.cpp put as much as fits on the card and keep the rest in RAM, and runs the audio part on the CPU. S2 Pro runs
+on the CPU on such a card. Tested on a Quadro M1000M (2 GB, Linux Mint 22.3): Qwen3-TTS about 2.7x slower than real
+time for a paragraph, S2 Pro about 35x; on a card that old the CPU alone is about as fast.
 
 On the first start, open **Setup** in the app and download the voice model (Qwen3-TTS Q8, 2.3 GB, or Q4, 1 GB)
 and, for subtitles, a Whisper model (small, 190 MB). Downloads run inside the app (resumable, SHA-256 checked).
@@ -49,9 +94,9 @@ Three programs are **never downloaded** by the app on Linux; install them on the
 
 | Program | How |
 |---|---|
-| `llama-tts` (the speech engine) | install llama.cpp (see Requirements). The Setup page shows the "System" engine without a Download button |
-| `whisper-cli` (subtitles, transcripts) | `./build-whisper.sh`. Downloading a Whisper *model* in the app works as usual; the Setup page warns until `whisper-cli` exists |
-| `ffmpeg` (video files, M4A/AAC input) | your package manager (`sudo pacman -S ffmpeg`, `sudo apt install ffmpeg`). The Models page (Tools) shows "Not found on this PC" until it is installed |
+| `llama-tts` (the speech engine) | `setup.sh` downloads llama.cpp into `linux/bin/`, or use your own (see Requirements). The Setup page shows the "System" engine without a Download button |
+| `whisper-cli` (subtitles, transcripts) | `setup.sh` / `./build-whisper.sh`. Downloading a Whisper *model* in the app works as usual; the Setup page warns until `whisper-cli` exists |
+| `ffmpeg` (video files, M4A/AAC input) | `setup.sh` installs it with the package manager. The Models page (Tools) shows "Not found on this PC" until it is installed |
 
 The upstream app would fetch Windows builds of these (`ffmpeg.exe`, `whisper-bin-x64.zip`), which cannot run here.
 `compat.py` switches that off. An `ffmpeg.exe` left in `engine/ffmpeg/` by an earlier download is ignored.
@@ -66,18 +111,22 @@ The upstream app would fetch Windows builds of these (`ffmpeg.exe`, `whisper-bin
 | `./fatima-voice-studio --no-browser` | don't open the browser (can be combined) |
 
 The tray icon uses AppIndicator (KDE; GNOME with an extension). That needs `pygobject` in the venv, which `setup.sh`
-installs (it builds from source and needs `gobject-introspection`, `cairo`, `pkgconf`). Without `pygobject` the app
+installs (it builds from source and needs the development files of `gobject-introspection` 2.x and `cairo`, which
+`setup.sh` installs; Ubuntu 22.04 and older have only 1.x, so no tray icon there). Without `pygobject` the app
 starts without a tray icon and says so; quit it with Ctrl+C or `--stop`.
 
 ## Requirements
 
-| What | Used for | Arch package |
+`setup.sh` installs the first five rows; the rest usually come with the desktop.
+
+| What | Used for | Where it comes from |
 |---|---|---|
-| `uv` | venv with Python 3.13 | `uv` |
-| `gobject-introspection`, `cairo`, `pkgconf` | builds `pygobject` for the tray icon (optional) | same names |
-| `llama-tts` | speech output (Qwen3-TTS) | `llama.cpp-cuda` (NVIDIA) or `llama.cpp-vulkan` (AMD/Intel) |
-| `whisper-cli` | subtitles, transcripts | `./build-whisper.sh` (the Arch package `whisper-cpp` conflicts with `llama.cpp-cuda`, both ship `ggml`) |
-| `ffmpeg` | reading video files and M4A/AAC | `ffmpeg` |
+| `uv` | venv with Python 3.13 | uv's installer (`~/.local/bin`); Arch: `uv` |
+| `gobject-introspection`, `cairo`, `pkg-config` (development files) | builds `pygobject` for the tray icon (optional) | package manager |
+| `llama-tts` | speech output (Qwen3-TTS) | llama.cpp in `linux/bin/llama.cpp` from `setup.sh` (CUDA: glibc 2.38+, NVIDIA driver 580+; Vulkan: glibc 2.34+, the Vulkan loader and a Vulkan driver), or your own with `FVS_LLAMA_TTS` |
+| `s2` (s2.cpp) | Fish Audio S2 Pro | `linux/bin/s2cpp` from `setup.sh` (x86_64), or `FVS_S2` (a folder with `s2` and `tokenizer.json`) |
+| `whisper-cli` | subtitles, transcripts | `linux/bin/whisper-gpu` from `setup.sh` (x86_64); elsewhere `./build-whisper.sh` (git, cmake, a C++ compiler) |
+| `ffmpeg` | reading video files and M4A/AAC | package manager (Fedora: `ffmpeg-free`) |
 | `setpriv` (util-linux) | the engine ends with the app | `util-linux` |
 | `gio` or `trash-cli` | deleting to the trash | `glib2` / `trash-cli` |
 | `zenity` or `kdialog` | "Browse" button in Settings | `zenity` / `kdialog` |
@@ -86,7 +135,9 @@ starts without a tray icon and says so; quit it with Ctrl+C or `--stop`.
 
 `llama-tts` has to support Qwen3-TTS: at least **b10270** (4 Aug 2026); older builds have a different command line.
 Verified with b10689; the Windows version of the app pins b11476. `setup.sh` warns if `llama-tts` is older
-(`LLAMA_MIN_BUILD` at the top of the script). If a model won't run, update `llama-tts` first.
+(`LLAMA_MIN_BUILD` at the top of the script). If a model won't run, update `llama-tts` first. A `llama-tts` in
+`linux/bin/` (the download) wins over one on `PATH`; `FVS_LLAMA_TTS` wins over both. Delete `linux/bin/llama.cpp`
+and `linux/bin/llama-tts` to use the system's again.
 
 Python 3.14 doesn't work (no wheels for `sherpa-onnx`/`lameenc` yet), which is why `setup.sh` creates the venv with 3.13.
 
@@ -95,14 +146,15 @@ Python 3.14 doesn't work (no wheels for `sherpa-onnx`/`lameenc` yet), which is w
 | File | Purpose |
 |---|---|
 | `build-whisper.sh` | builds `whisper-cli` (CPU, static) into `bin/` |
-| `setup.sh` | setup; `--service` (systemd), `--desktop` (menu entry). Both work from an install path with spaces |
+| `setup.sh` | setup (system packages, uv, llama.cpp, whisper-cli); `--yes`, `--service` (systemd), `--desktop` (menu entry). Both work from an install path with spaces |
 | `fatima-voice-studio` | launcher (tray is the default; `--no-tray`, `--stop`, `--no-browser`, `--check`) |
 | `run.py` | entry point: loads `compat.py`, then the normal `studio.__main__` |
 | `compat.py` | the compatibility layer (see `ARCHITECTURE.md`) |
 | `test_smoke.py` | checks that the layer still fits `studio/` (see "Update and maintenance") |
 | `mcp_stdio.py` | stdio MCP launcher for agents (Claude Code …) |
 | `requirements-linux.txt` | dependencies without `pywin32` |
-| `systemd/`, `desktop/` | templates for the service and the menu entry (`@EXEC@` is replaced by the quoted launcher path) |
+| `install.sh` | one-line install and update without git: downloads the latest release into `~/.local/opt/fatima-voice-studio`, then runs `setup.sh` |
+| `systemd/` | template for the service (`@EXEC@` is replaced by the quoted launcher path); the menu entry comes from `compat.desktop_entry` |
 | `.venv/` | Python environment (not in git) |
 | `ARCHITECTURE.md` | structure and data flow with a diagram |
 

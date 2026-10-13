@@ -1,0 +1,172 @@
+# Builds the Linux engines that linux/setup.sh downloads next to the official llama.cpp build: s2.cpp (Fish Audio
+# S2 Pro, the same commit, pull requests and seed.patch as s2cpp.yml) and whisper-cli (whisper.cpp), for one graphics
+# card backend each, and publishes them as one release (tag input below):
+#
+#   cuda   -> NVIDIA, RTX 20 series and newer, driver 580+ (CUDA 13.4). cuBLAS/cudart are not packed: they come from
+#             llama.cpp's cudart archive, which setup.sh puts in linux/bin/llama.cpp (RPATH $ORIGIN/../llama.cpp)
+#   vulkan -> AMD, Intel, older NVIDIA; also runs on the CPU
+#
+# Built on Ubuntu 22.04 (glibc 2.35), so they run on Ubuntu 22.04 / Debian 12 / Fedora 36 and newer. Each archive
+# holds s2cpp/ and whisper-gpu/ and is unpacked into linux/bin. After publishing, put the archives' SHA-256 into
+# ENGINES_SHA256 in linux/setup.sh. Run it by hand; app releases don't.
+name: Linux engines
+
+on:
+  workflow_dispatch:
+    inputs:
+      s2_ref:
+        description: "s2.cpp commit"
+        required: true
+        default: "2c33261938da1a41d713768b1b391b4d368d7d2c"
+      s2_prs:
+        description: "s2.cpp pull requests to merge, as number@commit (space separated)"
+        required: false
+        default: "50@49bb869e2399555ab23be1d6ec4b8aa67c0b6a3c 51@f468f9d70e269855f67c2c7e0080071263edb40b 52@68ebea3f66e143ad58e326d11aee2b1817c1ae9c"
+      whisper_tag:
+        description: "whisper.cpp tag"
+        required: true
+        default: "v1.9.4"
+      release:
+        description: "Release tag to publish (empty: keep the archives as workflow artifacts only)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.backend }}
+    runs-on: ubuntu-22.04
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - backend: cuda
+            image: nvidia/cuda:13.4.1-devel-ubuntu22.04
+            # RTX 20 series (Turing) and newer, like the Windows CUDA 13.4 builds
+            # (quoted: the line goes into the shell as it is, where ; and $ are special)
+            defines: -DGGML_CUDA=ON "-DCMAKE_CUDA_ARCHITECTURES=75-virtual;80-real;86-real;89-real;120-real" '-DCMAKE_BUILD_RPATH=$ORIGIN/../llama.cpp'
+            s2_define: -DS2_CUDA=ON
+          - backend: vulkan
+            image: ubuntu:22.04
+            defines: -DGGML_VULKAN=ON
+            s2_define: -DS2_VULKAN=ON
+    env:
+      VULKAN_VERSION: 1.4.357.0
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Tools
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq git cmake g++ make patch ca-certificates curl xz-utils
+          # the Vulkan loader library to link against (the headers and glslc come from the SDK below)
+          if [ "${{ matrix.backend }}" = vulkan ]; then apt-get install -y -qq libvulkan-dev; fi
+          # NCCL (multi-GPU) is in the CUDA image; ggml would link it, but llama.cpp ships no libnccl
+          apt-get remove -y -qq 'libnccl*' || true
+          rm -f /usr/lib/x86_64-linux-gnu/libnccl* /usr/include/nccl*.h
+
+      # Ubuntu 22.04 has no glslc and Vulkan headers too old for this ggml: LunarG's SDK, as on Windows
+      - name: Vulkan SDK
+        if: matrix.backend == 'vulkan'
+        run: |
+          curl -sSfL -o /tmp/vk.tar.xz "https://sdk.lunarg.com/sdk/download/$VULKAN_VERSION/linux/vulkansdk-linux-x86_64-$VULKAN_VERSION.tar.xz"
+          mkdir -p /opt/vk && tar -xJf /tmp/vk.tar.xz -C /opt/vk
+          echo "VULKAN_SDK=/opt/vk/$VULKAN_VERSION/x86_64" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=/opt/vk/$VULKAN_VERSION/x86_64" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=/opt/vk/$VULKAN_VERSION/x86_64/lib" >> "$GITHUB_ENV"
+          echo "/opt/vk/$VULKAN_VERSION/x86_64/bin" >> "$GITHUB_PATH"
+
+      - name: Get this project's patches
+        uses: actions/checkout@v4
+        with:
+          path: fvs
+          sparse-checkout: packaging/s2cpp
+
+      - name: s2.cpp
+        run: |
+          git clone -q https://github.com/rodrigomatta/s2.cpp s2 && cd s2
+          git checkout -q "${{ inputs.s2_ref }}" && git submodule update -q --init --recursive
+          for p in ${{ inputs.s2_prs }}; do
+            git fetch -q --no-tags --no-recurse-submodules origin "${p#*@}"
+            git -c user.name=build -c user.email=build@localhost merge -q --no-edit "${p#*@}"
+            echo "Merged PR #${p%@*}"
+          done
+          for p in ../fvs/packaging/s2cpp/*.patch; do git apply --verbose "$p"; done
+          # the same source fixes as the Windows build ((std::max) is harmless here; CCCL 3.4 needs <cuda/iterator>)
+          sed -i 's/= max(0, std::stoi/= (std::max)(0, std::stoi/' src/main.cpp
+          sed -i 's|\(#\s*include <cub/cub.cuh>\)|\1\n#    if __has_include(<cuda/iterator>)\n#        include <cuda/iterator>\n#    endif|' ggml/src/ggml-cuda/top-k.cu
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DBUILD_SHARED_LIBS=OFF ${{ matrix.s2_define }} ${{ matrix.defines }}
+          cmake --build build -j"$(nproc)" --target s2
+
+      - name: whisper.cpp
+        run: |
+          git clone -q --depth 1 --branch "${{ inputs.whisper_tag }}" https://github.com/ggml-org/whisper.cpp whisper
+          cmake -S whisper -B whisper/build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=OFF -DBUILD_SHARED_LIBS=OFF \
+            -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF ${{ matrix.defines }}
+          cmake --build whisper/build -j"$(nproc)" --target whisper-cli
+
+      # The licences ask redistributions to carry them (Fish Audio Research License for s2.cpp / S2 Pro, MIT for
+      # whisper.cpp)
+      - name: Pack
+        run: |
+          mkdir -p pack/s2cpp pack/whisper-gpu
+          cp s2/build/s2 s2/tokenizer.json s2/LICENSE.md pack/s2cpp/
+          cat > pack/s2cpp/NOTICE.txt <<EOF
+          This model is licensed under the Fish Audio Research License, Copyright © 39 AI, INC. All Rights Reserved.
+
+          Built with Fish Audio. This is s2.cpp (${{ inputs.s2_ref }}, https://github.com/rodrigomatta/s2.cpp), changed for
+          Fatima Voice Studio: pull requests ${{ inputs.s2_prs }} merged; packaging/s2cpp/seed.patch (a --seed option and a
+          "seed" server parameter for repeatable takes); (std::max) in src/main.cpp; <cuda/iterator> in ggml's top-k.cu.
+          Backend: ${{ matrix.backend }}, Linux x86_64.
+          EOF
+          cp whisper/build/bin/whisper-cli pack/whisper-gpu/
+          cp whisper/LICENSE pack/whisper-gpu/LICENSE.txt
+          grep -q -- '--seed' pack/s2cpp/s2 || { echo "seed.patch isn't in s2"; exit 1; }
+          if objdump -p pack/s2cpp/s2 pack/whisper-gpu/whisper-cli 2>/dev/null | grep -q 'NEEDED.*nccl'; then echo "linked NCCL"; exit 1; fi
+          tar -czf "fvs-engines-${{ inputs.release || 'test' }}-linux-${{ matrix.backend }}-x64.tar.gz" -C pack s2cpp whisper-gpu
+          ls -la *.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-engines-${{ matrix.backend }}
+          path: fvs-engines-*.tar.gz
+
+  publish:
+    needs: build
+    if: inputs.release != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # --latest=false: the app's updater reads the latest release, which must stay the newest app version.
+      - name: Publish release ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS.txt
+          {
+            echo "Linux engines for Fatima Voice Studio: s2.cpp (Fish Audio S2 Pro) and whisper-cli for the graphics card."
+            echo "linux/setup.sh downloads the one for your card by itself; there's nothing to install by hand."
+            echo
+            echo "| File | Cards |"
+            echo "|---|---|"
+            echo "| cuda | NVIDIA, RTX 20 series and newer (driver 580+); uses cuBLAS from llama.cpp's cudart archive |"
+            echo "| vulkan | AMD, Intel, older NVIDIA; also runs on the CPU |"
+            echo
+            echo "s2.cpp ${{ inputs.s2_ref }} with pull requests ${{ inputs.s2_prs }} and packaging/s2cpp/seed.patch;"
+            echo "whisper.cpp ${{ inputs.whisper_tag }}. Built on Ubuntu 22.04 (glibc 2.35)."
+            echo "Fish Audio Research License (s2cpp/LICENSE.md, s2cpp/NOTICE.txt). Built with Fish Audio. whisper.cpp: MIT."
+            echo
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+          } > notes.md
+          gh release create "${{ inputs.release }}" *.tar.gz SHA256SUMS.txt \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Linux engines (${{ inputs.release }})" --notes-file notes.md --latest=false

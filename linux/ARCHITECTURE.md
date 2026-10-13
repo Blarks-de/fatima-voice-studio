@@ -94,4 +94,4 @@ Upstream downloads Windows builds of both and prefers its own copy:
   which is the case in a source checkout.
 - Install paths with spaces: the `Exec=` line of the autostart entry is built by `compat.exec_quote`; `setup.sh` uses
   the same function for the menu entry and a matching quoting function for the systemd unit, and fills the templates
-  in `desktop/` and `systemd/` without `sed` (an install path may contain `&` or `\`).
+  in `systemd/` without `sed` (an install path may contain `&` or `\`).

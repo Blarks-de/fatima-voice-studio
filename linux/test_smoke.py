@@ -30,13 +30,16 @@ STUDIO = HERE.parent / "studio"
 # What compat.py replaces or relies on: module -> names that must exist at the top level of studio/<module>.py
 TARGETS = {
     "config": {"HOME", "DATA", "CONFIG_FILE", "VOICES", "MUSIC", "DEFAULTS", "ENGINES", "ENGINE_EXE", "WHISPER_EXE",
-               "engine_dir", "installed_engines", "whisper_dir", "tool_dir"},
+               "engine_dir", "installed_engines", "whisper_dir", "tool_dir",
+               # _patch_s2: S2 Pro and Whisper on the graphics card from setup.sh's downloads
+               "S2_EXE", "S2_RUNTIME", "s2_dir", "s2_engine", "WHISPER_GPU", "whisper_gpu_engine", "MODELS"},
     "hardware": {"_vendor", "_registry_gpus", "_ram_gb", "_cpu", "on_battery", "recommended_engine"},
     "autostart": {"enabled", "set_enabled", "python_console", "install_launchers"},
     "updater": {"Updater"},
     "trash": {"to_recycle_bin"},
     "winui": {"pick_folder"},
     "engine": {"subprocess"},  # compat swaps engine.subprocess for a Popen that is killed with the app
+    "s2engine": {"subprocess"},  # the same for the S2 Pro server
     "tray": {"copy", "Tray"},
     # app.py imports these by name (`from .updater import Updater`), so compat has to patch them *before* app is
     # imported. Renaming them or importing them differently would bypass the patch.
@@ -48,7 +51,8 @@ TARGETS = {
 CLASS_MEMBERS = {
     ("updater", "Updater"): {"watch", "check", "start"},
     ("tray", "Tray"): {"__init__"},
-    ("downloads", "Downloads"): {"tools", "start_tool", "delete_tool", "start_engine", "_whisper_missing"},
+    ("downloads", "Downloads"): {"tools", "start_tool", "delete_tool", "start_engine", "_whisper_missing",
+                                 "start", "whisper_gpu", "ensure_whisper_gpu"},
 }
 DEFAULT_KEYS = {"batches_dir", "exports_dir", "models_dir", "engine", "check_updates"}
 

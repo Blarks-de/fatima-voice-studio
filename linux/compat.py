@@ -14,6 +14,7 @@ What it does:
   * updater    switched off (Windows installer updates); update with `git pull`
   * tools      ffmpeg and whisper-cli come from the system / build-whisper.sh; the Windows downloads are never offered
   * engine     llama-tts dies with the app (setpriv --pdeathsig), like the Windows job object
+  * S2 Pro     s2.cpp for Linux (Vulkan) from linux/bin/s2cpp (setup.sh) or FVS_S2, run as the "vulkan" S2 engine
   * wording    visible "Windows" texts in the web page are rewritten (Start at login, Trash …)
   * misc       os.startfile -> xdg-open, clipboard -> wl-copy / xclip / xsel
 """
@@ -46,7 +47,7 @@ def find_tool(env: str, name: str) -> str | None:
     given = os.environ.get(env)
     if given:
         return given if Path(given).exists() else None
-    local = LINUX_DIR / "bin" / name  # built by build-whisper.sh
+    local = LINUX_DIR / "bin" / name  # whisper-cli from build-whisper.sh, llama-tts downloaded by setup.sh
     return str(local) if local.exists() else shutil.which(name)
 
 
@@ -99,9 +100,9 @@ def _patch_config() -> None:
     config.ENGINES.clear()
     config.ENGINES[SYSTEM_ENGINE] = {
         "label": "System · llama.cpp",
-        "about": "The llama-tts installed on this PC (CUDA, Vulkan or CPU, whatever that build was made for). "
-                 "Nothing to download here: install llama.cpp (build b10270 or newer) with your package manager "
-                 "or from source, then press Check again.",
+        "about": "llama.cpp installed by linux/setup.sh: CUDA for NVIDIA cards (RTX 20 series and newer), Vulkan "
+                 "for the rest. Nothing to download here: run setup.sh again to install it or to switch after a "
+                 "driver update, then press Check again. Your own llama-tts works too (FVS_LLAMA_TTS).",
         "zips": [], "gpu": True}
 
     def engine_dir(cfg: dict, key: str | None = None) -> Path:
@@ -133,8 +134,45 @@ def _link(target: str | None, link: Path) -> None:
         pass
 
 
+S2_EXE = "s2"
+S2_HINT = ("Fish Audio S2 Pro needs its engine part, s2.cpp for Linux. Run linux/setup.sh again: it downloads it "
+           "into linux/bin/s2cpp. Then press Check again.")
+
+
+BACKEND_LABELS = {"cuda": "NVIDIA · CUDA", "vulkan": "Vulkan"}
+
+
+def backend() -> str:
+    """The graphics card backend setup.sh installed the engines for: "cuda" or "vulkan" (linux/bin/BACKEND)."""
+    try:
+        b = (LINUX_DIR / "bin" / "BACKEND").read_text(encoding="utf-8").strip()
+    except OSError:
+        b = ""
+    return b if b in BACKEND_LABELS else "vulkan"
+
+
+def whisper_gpu_cli() -> Path | None:
+    """whisper-cli for the graphics card (setup.sh's download, linux/bin/whisper-gpu)."""
+    exe = LINUX_DIR / "bin" / "whisper-gpu" / "whisper-cli"
+    return exe if exe.exists() else None
+
+
+def s2_folder() -> Path | None:
+    """s2.cpp for Linux: a folder with the s2 program and tokenizer.json (FVS_S2, else linux/bin/s2cpp)."""
+    given = os.environ.get("FVS_S2")
+    folder = Path(given) if given else LINUX_DIR / "bin" / "s2cpp"
+    return folder if (folder / S2_EXE).exists() and (folder / "tokenizer.json").exists() else None
+
+
 def _link_tools() -> None:
     home = fvs_home()
+    s2 = s2_folder()
+    key = backend()
+    for k in BACKEND_LABELS:  # studio/ runs <s2 dir>/s2 with <s2 dir>/tokenizer.json, for the backend in use
+        for name in (S2_EXE, "tokenizer.json"):
+            _link(str(s2 / name) if s2 and k == key else None, home / "engine" / f"s2-{k}" / name)
+        gpu_cli = whisper_gpu_cli()
+        _link(str(gpu_cli) if gpu_cli and k == key else None, home / "engine" / f"whisper-gpu-{k}" / "whisper-cli")
     _link(find_tool("FVS_LLAMA_TTS", "llama-tts"), home / "engine" / SYSTEM_ENGINE / "llama-tts")
     _link(find_tool("FVS_WHISPER_CLI", "whisper-cli"), home / "engine" / "whisper" / "whisper-cli")
 
@@ -367,7 +405,8 @@ def desktop_entry(extra_args: str = "") -> str:
     return ("[Desktop Entry]\nType=Application\nName=Fatima Voice Studio\n"
             "Comment=Voiceovers and voice cloning on this PC\n"
             f"Exec={exec_quote(str(LINUX_DIR / 'fatima-voice-studio'))} {extra_args}".rstrip() + "\n"
-            "Terminal=false\nCategories=AudioVideo;Audio;\nIcon=audio-input-microphone\n")
+            "Terminal=false\nCategories=AudioVideo;Audio;\n"
+            f"Icon={LINUX_DIR.parent / 'studio' / 'web' / 'icon.png'}\n")
 
 
 def _patch_autostart() -> None:
@@ -388,7 +427,8 @@ def _patch_autostart() -> None:
 
 def _patch_updater() -> None:
     from studio import updater
-    msg = "Updates aren't offered on Linux. Update with `git pull` in the project folder."
+    msg = ("Updates aren't offered in the app on Linux. Run the install command again (linux/install.sh), "
+           "or `git pull` in a git checkout.")
 
     class LinuxUpdater(updater.Updater):
         async def watch(self) -> None:
@@ -404,6 +444,48 @@ def _patch_updater() -> None:
     updater.Updater = LinuxUpdater
 
 
+def _patch_s2() -> None:
+    """S2 Pro and Whisper on the graphics card. setup.sh installs s2.cpp and whisper-cli built for one backend (CUDA
+    for NVIDIA, Vulkan for the rest, linux/bin/BACKEND). The app treats them as its "cuda" or "vulkan" engine, so
+    the choice of graphics card, the move off a built-in chip and the sharing of the card's memory work as on
+    Windows, while llama-tts stays the "system" engine. The app's own downloads (Windows zips) are never offered."""
+    from studio import config, downloads
+
+    key = backend()
+    config.ENGINES[SYSTEM_ENGINE]["label"] = f"llama.cpp · {BACKEND_LABELS[key]}"
+    config.S2_EXE = S2_EXE
+    config.S2_RUNTIME.clear()
+    config.S2_RUNTIME[key] = ("", 0, "")  # size 0: nothing for the app to download
+    config.s2_dir = lambda engine: fvs_home() / "engine" / f"s2-{engine}"
+    # S2 Pro runs whenever llama-tts is there (the "system" engine) and s2.cpp is installed
+    config.s2_engine = lambda cfg: (key if s2_folder() and SYSTEM_ENGINE in config.installed_engines(cfg)
+                                    else None)
+    config.WHISPER_GPU.clear()
+    config.WHISPER_GPU[key] = ("linux/bin/whisper-gpu/whisper-cli", 0, "")
+    config.whisper_gpu_engine = lambda cfg: (key if whisper_gpu_cli() and SYSTEM_ENGINE in config.installed_engines(cfg)
+                                             else None)
+    for m in config.MODELS.values():
+        if m.get("runtime") == "s2":
+            m["engines"] = [SYSTEM_ENGINE]
+
+    D = downloads.Downloads
+    real_start = D.start
+
+    def start(self, key: str) -> None:
+        if config.MODELS.get(key, {}).get("runtime") == "s2" and not s2_folder():
+            raise ValueError(S2_HINT)
+        real_start(self, key)
+
+    D.start = start
+
+    def whisper_gpu(self) -> dict | None:
+        k = config.whisper_gpu_engine(self.cfg)
+        return k and {"engine": k, "label": BACKEND_LABELS[k], "size": 0, "ready": True, "partial": 0, "job": None}
+
+    D.whisper_gpu = whisper_gpu
+    D.ensure_whisper_gpu = lambda self, retry=False: None  # setup.sh installs it
+
+
 def _patch_engine() -> None:
     """Windows ties llama-tts to the app with a job object. Here setpriv makes the kernel kill it if the app dies."""
     if not shutil.which("setpriv"):
@@ -415,6 +497,8 @@ def _patch_engine() -> None:
             super().__init__(["setpriv", "--pdeathsig", "SIGKILL", *args], *a, **kw)  # setpriv execs: same pid
 
     engine.subprocess = types.SimpleNamespace(**{**vars(subprocess), "Popen": Popen})
+    from studio import s2engine
+    s2engine.subprocess = engine.subprocess  # the S2 Pro server too
 
 
 def _notify(message: str, title: str | None = None) -> None:
@@ -457,8 +541,21 @@ TEXTS = [
     ("get ffmpeg on the <a href=\"#models\">Models page</a> (Tools).",
      "install ffmpeg on this PC (see <a href=\"#models\">Models</a>, Tools)."),
     ("llama.cpp ${esc(s.engine_release)}, the official build. Pick the one for your graphics card.",
-     "On Linux the app uses the llama-tts installed on this PC (llama.cpp b10270 or newer, built for your graphics "
-     "card). There is nothing to download here: install it with your package manager, then press Check again."),
+     "llama.cpp ${esc(s.engine_release)}, installed by linux/setup.sh for your graphics card (CUDA for NVIDIA, "
+     "Vulkan for the rest). To install or switch it, run setup.sh again, then press Check again."),
+    # Whisper: no graphics card engine to switch to on Linux; setup.sh installs Whisper for the card (see _patch_s2)
+    ("With a graphics card engine on <a href=\"#setup\">Setup</a> (CUDA or Vulkan) it runs on the card, many times "
+     "faster.",
+     "On Linux, setup.sh installs Whisper for the graphics card (x86_64 PCs): run it again."),
+    # S2 Pro: one s2.cpp build for Linux, installed by setup.sh (see _patch_s2), instead of an engine to switch to
+    ("S2 Pro on the NVIDIA · CUDA or AMD / Intel · Vulkan engine.",
+     "S2 Pro with s2.cpp for Linux, which setup.sh installs."),
+    ("Needs the NVIDIA · CUDA or AMD / Intel · Vulkan engine (<a href=\"#setup\">Setup</a>)",
+     "Needs s2.cpp for Linux: run linux/setup.sh again"),
+    ("Needs the NVIDIA · CUDA or AMD / Intel · Vulkan engine: switch to one on Setup.",
+     "Needs s2.cpp for Linux: run linux/setup.sh again, then press Check again on Setup."),
+    ("runs on the NVIDIA · CUDA or AMD / Intel · Vulkan engine. Switch to one on Setup.",
+     "needs s2.cpp for Linux: run linux/setup.sh again."),
 ]
 
 # Edits to the page's script where a text is not enough: no Download button for things that can't be downloaded.
@@ -537,6 +634,7 @@ def apply() -> None:
     _patch_tools()
     _patch_autostart()
     _patch_updater()
+    _patch_s2()
     _patch_engine()
     _link_tools()
     _patch_web()
