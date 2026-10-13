@@ -78,10 +78,10 @@ No. None of the models the app offers needs one.
 
 ## Does it work on Mac or Linux?
 
-Yes, community-supported. The app is made for Windows 10 and 11 and has an installer for them. Linux and
-Apple Silicon Macs (M1 and newer) run it from the source code, with the speech engine you install yourself;
-there's no installer and no automatic updates. How to set it up: the `linux/` and `macos/` folders in the
-[project on GitHub](https://github.com/hassanxs/fatima-voice-studio#linux-and-macos).
+Yes, community-supported. The app is made for Windows 10 and 11 and has an installer for them. On Linux one
+command sets everything up, with the engines for your graphics card (CUDA or Vulkan) and S2 Pro; run it again to
+update. Apple Silicon Macs (M1 and newer) run it from the source code with Homebrew's engines, without S2 Pro for
+now. How to set it up: [Linux and macOS](https://github.com/hassanxs/fatima-voice-studio#linux-and-macos) on GitHub.
 
 ## Can AI agents use it?
 

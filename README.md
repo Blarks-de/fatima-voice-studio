@@ -94,23 +94,34 @@ contributed by [@Blarks-de](https://github.com/Blarks-de): there's no installer,
 rather than for each release. Problems and fixes are welcome as
 [issues](https://github.com/hassanxs/fatima-voice-studio/issues) and pull requests.
 
-Both run from the source code, through a small add-on folder that changes nothing in the app itself:
+Both run from the source code, through a small add-on folder that changes nothing in the app itself.
+
+**Linux** (Debian, Ubuntu, Mint, Fedora, openSUSE, Arch and their relatives), in one line, no git needed:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hassanxs/fatima-voice-studio/main/linux/install.sh | bash
+```
+
+It shows what it will set up and asks once: the missing system packages (one `sudo`), Python, and the engines for
+your graphics card: **CUDA** on NVIDIA RTX 20 series and newer, **Vulkan** on AMD, Intel and older cards. Qwen3-TTS,
+Fish Audio S2 Pro and Whisper all run on the card, as on Windows. Then start it from the applications menu. Run the
+same line again to update; `~/.local/opt/fatima-voice-studio/linux/setup.sh --uninstall` removes it.
+
+**Mac:**
 
 ```bash
 git clone https://github.com/hassanxs/fatima-voice-studio
-cd fatima-voice-studio/linux    # or: cd fatima-voice-studio/macos
+cd fatima-voice-studio/macos
 ./setup.sh
 ./fatima-voice-studio
 ```
 
+On a Mac the app uses Homebrew's `llama.cpp` and `whisper-cpp`, which run on the Mac's graphics (Metal), and
+ffmpeg from Homebrew. S2 Pro isn't available on a Mac yet.
+
 The app is the same; a few things work differently:
 
-- **Speech engine:** the app uses the `llama-tts` you install yourself (llama.cpp build b10270 or newer) instead of
-  downloading one. On Linux that's your distribution's llama.cpp package for your graphics card (CUDA or Vulkan);
-  on a Mac it's Homebrew's `llama.cpp`, which runs on the Mac's graphics (Metal).
-- **Subtitles and transcripts** need `whisper-cli`: on Linux `./build-whisper.sh` builds it, on a Mac
-  `brew install whisper-cpp`. **ffmpeg** comes from your package manager or Homebrew too.
-- **Updates:** no automatic updates; update with `git pull` in the project folder.
+- **Updates:** no automatic updates. On Linux run the install line again; on a Mac `git pull` in the project folder.
 - **Start at login:** a systemd user service on Linux, a LaunchAgent on a Mac (`./setup.sh --service`).
 
 Requirements, setup steps, troubleshooting and what has been tested: [`linux/README.md`](linux/README.md) and
@@ -173,6 +184,7 @@ About page when an update is ready. Older installers stay on the [releases page]
 
 | Version | What changed |
 |---|---|
+| [0.3.3](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.3) | Small graphics cards (2-3 GB) no longer run out of memory. Linux: one-command install on every major distribution, with CUDA or Vulkan engines and S2 Pro. |
 | [0.3.2](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.2) | Find a new voice and voice samples work in every language S2 Pro speaks (they failed in Hindi, Urdu and others). |
 | [0.3.1](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.1) | Whisper large-v3 turbo is used by itself on the graphics card (more accurate subtitles outside English). Each script's language list follows the voice model. |
 | [0.3.0](https://github.com/hassanxs/fatima-voice-studio/releases/tag/v0.3.0) | Fish Audio S2 Pro, an optional second voice model: 80+ languages and emotion tags. Language lists show what each model speaks. Chinese and Japanese scripts are split and subtitled properly. |
