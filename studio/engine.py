@@ -14,7 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import config, runtime, s2engine, text as textmod
+from . import config, hardware, runtime, s2engine, text as textmod
 
 log = logging.getLogger("studio.engine")
 
@@ -135,10 +135,17 @@ class Engine:
         expected = textmod.estimate_seconds(text) * FRAME_RATE
         # Cap the length well above what the text needs: a model that never stops can't run away for minutes.
         cap = int(expected * 3 + 150)
+        # A model bigger than the card (e.g. Q4 on a 2 GB card): llama.cpp fits what it can on the card and keeps
+        # the rest in RAM ("auto"), and the audio part (mmproj, about 1 GB of work memory) stays on the CPU. With
+        # -ngl 99 such a card runs out of memory. Cards the model fits keep everything on the card, as before.
+        vram = (hardware.main_gpu(hardware.detect()) or {}).get("vram_gb") or 0
+        small = gpu and 0 < vram < m.get("vram_gb", 0)
         args = [str(exe), "-m", str(models_dir / m["files"][0]), "-mm", str(models_dir / m["files"][1]),
-                "-ngl", "99" if gpu else "0", "-c", "4096", "-n", str(cap),
+                "-ngl", ("auto" if small else "99") if gpu else "0", "-c", "4096", "-n", str(cap),
                 "-f", str(prompt), "--tts-lang", language, "-s", str(int(seed) % 2**31),
                 "--output", str(out)]
+        if small:
+            args.append("--no-mmproj-offload")
         if voice:
             args += ["--tts-speaker-file", str(voice)]
         out.parent.mkdir(parents=True, exist_ok=True)

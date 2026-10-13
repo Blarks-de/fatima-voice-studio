@@ -146,9 +146,19 @@ class S2Server:
             raise S2Error("S2 Pro's engine part for this graphics card is missing. Open Models and click Get it.")
         gguf = Path(self.cfg["models_dir"]).resolve() / config.MODELS[model]["files"][0]
         self.port = _free_port()
+        # A card with less memory than the model needs runs it on the CPU: s2.cpp's own "auto" still puts all 36
+        # layers on the card and runs out of memory, and on a 2 GB card (Quadro M1000M) 12 layers on the card were
+        # slower than none.
+        gpu = hardware.main_gpu(hardware.detect())
+        on_cpu = bool(gpu) and 0 < gpu["vram_gb"] < config.MODELS[model].get("vram_gb", 0)
         args = [str(exe), "--server", "-H", "127.0.0.1", "-P", str(self.port), "--model", str(gguf),
-                "--tokenizer", str(folder / "tokenizer.json"), "--gpu-layers", "36", "--log-level", "info"]
-        args += ["--cuda", "0"] if engine == "cuda" else ["--vulkan", str(device)]
+                "--tokenizer", str(folder / "tokenizer.json"), "--gpu-layers", "0" if on_cpu else "36",
+                "--log-level", "info"]
+        if on_cpu:
+            args += ["--cuda" if engine == "cuda" else "--vulkan", "-1"]
+            log.info("S2 Pro runs on the CPU: the graphics card has %s GB", gpu["vram_gb"])
+        else:
+            args += ["--cuda", "0"] if engine == "cuda" else ["--vulkan", str(device)]
         env = os.environ.copy()
         if engine == "cuda":  # cuBLAS and cudart come from the voice engine's folder
             env["PATH"] = str(config.engine_dir(self.cfg, "cuda")) + os.pathsep + env.get("PATH", "")
